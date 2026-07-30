@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Technonaire Easy Website (Builder)
 
-## Getting Started
+Concierge website product for non-tech owners.
 
-First, run the development server:
+## What it does
+
+1. Visitor messages Technonaire (with optional design screenshots)
+2. Admin replies in inbox and creates a first draft + owner login
+3. Invite (link + credentials) is posted in the same chat
+4. Owner logs in and click-to-edits text, images, and colors
+5. UI change requests stay in Messages (text + screenshots)
+
+## Run locally
 
 ```bash
+cp .env.example .env.local
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+### Default admin
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Email: `admin@technonaire.com` (or `ADMIN_EMAIL`)
+- Password: `changeme123` (or `ADMIN_PASSWORD`)
 
-## Learn More
+### Typical flow
 
-To learn more about Next.js, take a look at the following resources:
+1. Home → Message us
+2. Login as admin → `/admin/inbox`
+3. Create draft + invite
+4. Login as owner → `/edit`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Related repo
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Agency marketing site: `technonaire-next` (links to this app via `NEXT_PUBLIC_BUILDER_URL`).
