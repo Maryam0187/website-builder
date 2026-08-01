@@ -26,12 +26,11 @@ export default function CheckEmailClient() {
           We sent your private chat link to <strong className="text-white">{email}</strong>.
         </p>
         <p className="mt-3 text-sm leading-6 text-blue-100">
-          Open that link to verify your email and continue the conversation. It is the same token
-          link as before — keep the email so you can return anytime.
+          Open that link to verify your email and continue the conversation. Keep the email so you
+          can return to your chat anytime.
         </p>
         <ul className="mt-6 space-y-2 text-sm text-blue-100">
           <li>• Check spam / promotions if you do not see it</li>
-          <li>• In local dev without Resend, the link is printed in the server console</li>
         </ul>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
