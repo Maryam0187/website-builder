@@ -1,6 +1,7 @@
 import { Pool } from "pg";
+import { promises as fs } from "fs";
+import path from "path";
 import { nanoid } from "nanoid";
-import { SCHEMA_SQL } from "./schema-sql";
 
 let pool = null;
 let schemaReady = null;
@@ -52,10 +53,13 @@ export async function withTransaction(fn) {
   }
 }
 
+/** Safety net if migrate wasn't run; source of truth is src/lib/schema.sql */
 export async function ensureSchema() {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    await getPool().query(SCHEMA_SQL);
+    const sqlPath = path.join(process.cwd(), "src/lib/schema.sql");
+    const sql = await fs.readFile(sqlPath, "utf8");
+    await getPool().query(sql);
   })().catch((error) => {
     schemaReady = null;
     throw error;
