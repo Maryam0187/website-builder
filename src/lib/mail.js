@@ -3,8 +3,14 @@ const appUrl = () => process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 export async function sendEmail({ to, subject, html, text }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM || "Technonaire Easy Website <onboarding@resend.dev>";
+  const isProd = process.env.NODE_ENV === "production";
 
   if (!apiKey) {
+    if (isProd) {
+      throw new Error(
+        "Email is not configured. Set RESEND_API_KEY (and MAIL_FROM) on the server.",
+      );
+    }
     console.log("\n========== EMAIL (dev — set RESEND_API_KEY to send) ==========");
     console.log("To:", to);
     console.log("Subject:", subject);
