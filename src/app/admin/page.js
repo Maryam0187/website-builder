@@ -5,6 +5,8 @@ import { listConversations, listSites } from "@/lib/store-actions";
 import BrandLogo from "@/components/BrandLogo";
 import AdminSitesList from "@/components/admin/AdminSitesList";
 
+export const dynamic = "force-dynamic";
+
 async function logoutAction() {
   "use server";
   await destroySession();

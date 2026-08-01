@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
-import { ensureAdminUser, verifyPassword, createSession, getCurrentUser, destroySession } from "@/lib/auth";
-import { readStore } from "@/lib/db";
+import {
+  ensureAdminUser,
+  verifyPassword,
+  createSession,
+  getCurrentUser,
+  destroySession,
+  getUserByEmail,
+} from "@/lib/auth";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -17,8 +23,7 @@ export async function POST(request) {
     return NextResponse.json({ error: "Email and password required" }, { status: 400 });
   }
 
-  const store = await readStore();
-  const user = store.users.find((u) => u.email === email);
+  const user = await getUserByEmail(email);
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }

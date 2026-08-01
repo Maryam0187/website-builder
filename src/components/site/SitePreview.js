@@ -18,7 +18,7 @@ async function loadPreview(slug, pageParam) {
   const site = await getSiteBySlug(slug);
   if (!site) notFound();
 
-  if (user.role === "owner" && site.id !== user.siteId) {
+  if (user.role === "owner" && Number(site.id) !== Number(user.siteId)) {
     return { forbidden: true, user, site: null, pageId: "home" };
   }
 

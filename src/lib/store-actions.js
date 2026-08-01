@@ -1,4 +1,4 @@
-import { id, readStore, updateStore } from "./db";
+import { query, token, toInt, withTransaction } from "./db";
 import {
   addPageToContent,
   createDefaultSiteContent,
@@ -7,45 +7,132 @@ import {
 } from "./site-defaults";
 import { hashPassword } from "./auth";
 
+function mapConversation(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    name: row.name,
+    email: row.email,
+    websiteName: row.website_name || "",
+    phone: row.phone || "",
+    businessType: row.business_type || "",
+    accessToken: row.access_token,
+    emailVerified: Boolean(row.email_verified),
+    emailVerifiedAt: row.email_verified_at || null,
+    siteId: row.site_id == null ? null : Number(row.site_id),
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapMessage(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    conversationId: Number(row.conversation_id),
+    sender: row.sender,
+    body: row.body,
+    images: Array.isArray(row.images) ? row.images : row.images || [],
+    system: Boolean(row.system),
+    readByAdmin: Boolean(row.read_by_admin),
+    createdAt: row.created_at,
+  };
+}
+
+function mapSite(row) {
+  if (!row) return null;
+  const content =
+    typeof row.content === "string" ? JSON.parse(row.content) : row.content || {};
+  return {
+    id: Number(row.id),
+    slug: row.slug,
+    conversationId: row.conversation_id == null ? null : Number(row.conversation_id),
+    ownerId: row.owner_id == null ? null : Number(row.owner_id),
+    status: row.status,
+    content: normalizeSiteContent(content),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function withNormalizedContent(site) {
-  if (!site) return null;
-  return { ...site, content: normalizeSiteContent(site.content) };
+  return site;
 }
 
 export async function listConversations() {
-  const store = await readStore();
-  return store.conversations
-    .map((c) => {
-      const msgs = store.messages.filter((m) => m.conversationId === c.id);
-      const last = msgs[msgs.length - 1] || null;
-      return {
-        ...c,
-        messageCount: msgs.length,
-        lastMessage: last,
-        unreadForAdmin: msgs.filter((m) => m.sender === "guest" || m.sender === "owner").filter((m) => !m.readByAdmin).length,
-      };
-    })
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  const { rows } = await query(
+    `SELECT
+       c.*,
+       COUNT(m.id)::int AS message_count,
+       COUNT(m.id) FILTER (
+         WHERE m.read_by_admin = false AND m.sender IN ('guest', 'owner')
+       )::int AS unread_for_admin,
+       (
+         SELECT json_build_object(
+           'id', lm.id,
+           'conversationId', lm.conversation_id,
+           'sender', lm.sender,
+           'body', lm.body,
+           'images', lm.images,
+           'system', lm.system,
+           'readByAdmin', lm.read_by_admin,
+           'createdAt', lm.created_at
+         )
+         FROM messages lm
+         WHERE lm.conversation_id = c.id
+         ORDER BY lm.created_at DESC
+         LIMIT 1
+       ) AS last_message
+     FROM conversations c
+     LEFT JOIN messages m ON m.conversation_id = c.id
+     GROUP BY c.id
+     ORDER BY c.updated_at DESC`,
+  );
+
+  return rows.map((row) => ({
+    ...mapConversation(row),
+    messageCount: row.message_count || 0,
+    lastMessage: row.last_message || null,
+    unreadForAdmin: row.unread_for_admin || 0,
+  }));
 }
 
 export async function getConversation(conversationId) {
-  const store = await readStore();
-  const conversation = store.conversations.find((c) => c.id === conversationId);
+  const id = toInt(conversationId);
+  if (id == null) return null;
+
+  const convRes = await query(`SELECT * FROM conversations WHERE id = $1`, [id]);
+  const conversation = mapConversation(convRes.rows[0]);
   if (!conversation) return null;
-  const messages = store.messages
-    .filter((m) => m.conversationId === conversationId)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  return { conversation, messages };
+
+  const msgRes = await query(
+    `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
+    [id],
+  );
+
+  return {
+    conversation,
+    messages: msgRes.rows.map(mapMessage),
+  };
 }
 
-export async function getConversationByToken(token) {
-  const store = await readStore();
-  const conversation = store.conversations.find((c) => c.accessToken === token);
+export async function getConversationByToken(accessToken) {
+  const { rows } = await query(`SELECT * FROM conversations WHERE access_token = $1`, [
+    accessToken,
+  ]);
+  const conversation = mapConversation(rows[0]);
   if (!conversation) return null;
-  const messages = store.messages
-    .filter((m) => m.conversationId === conversation.id)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  return { conversation, messages };
+
+  const msgRes = await query(
+    `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
+    [conversation.id],
+  );
+
+  return {
+    conversation,
+    messages: msgRes.rows.map(mapMessage),
+  };
 }
 
 export async function createConversation({
@@ -57,123 +144,117 @@ export async function createConversation({
   message,
   images = [],
 }) {
-  const now = new Date().toISOString();
-  const conversationId = id("conv");
-  const accessToken = id("tok");
   const normalizedEmail = String(email || "").toLowerCase().trim();
   const siteName = String(websiteName || "").trim();
+  const accessToken = token("tok");
 
-  await updateStore((store) => {
-    store.conversations.push({
-      id: conversationId,
-      name,
+  return withTransaction(async (client) => {
+    const convRes = await client.query(
+      `INSERT INTO conversations
+        (name, email, website_name, phone, business_type, access_token, email_verified, status)
+       VALUES ($1, $2, $3, $4, $5, $6, false, 'open')
+       RETURNING *`,
+      [name, normalizedEmail, siteName, phone || "", businessType || "", accessToken],
+    );
+    const conversation = mapConversation(convRes.rows[0]);
+
+    await client.query(
+      `INSERT INTO messages (conversation_id, sender, body, images, system, read_by_admin)
+       VALUES ($1, 'guest', $2, $3::jsonb, false, false)`,
+      [conversation.id, message, JSON.stringify(images || [])],
+    );
+
+    return {
+      conversationId: conversation.id,
+      accessToken,
       email: normalizedEmail,
       websiteName: siteName,
-      phone: phone || "",
-      businessType: businessType || "",
-      accessToken,
-      emailVerified: false,
-      siteId: null,
-      status: "open",
-      createdAt: now,
-      updatedAt: now,
-    });
-    store.messages.push({
-      id: id("msg"),
-      conversationId,
-      sender: "guest",
-      body: message,
-      images,
-      readByAdmin: false,
-      createdAt: now,
-    });
-    return store;
+    };
   });
-
-  return { conversationId, accessToken, email: normalizedEmail, websiteName: siteName };
 }
 
 export async function markConversationEmailVerified(accessToken) {
-  let verified = false;
-  await updateStore((store) => {
-    const conversation = store.conversations.find((c) => c.accessToken === accessToken);
-    if (!conversation) return store;
-    if (!conversation.emailVerified) {
-      conversation.emailVerified = true;
-      conversation.emailVerifiedAt = new Date().toISOString();
-      conversation.updatedAt = new Date().toISOString();
-      verified = true;
-    }
-    return store;
-  });
-  return verified;
+  const { rowCount } = await query(
+    `UPDATE conversations
+     SET email_verified = true,
+         email_verified_at = COALESCE(email_verified_at, now()),
+         updated_at = now()
+     WHERE access_token = $1 AND email_verified = false`,
+    [accessToken],
+  );
+  return rowCount > 0;
 }
 
 export async function addMessage({ conversationId, sender, body, images = [], system = false }) {
-  const now = new Date().toISOString();
-  const message = {
-    id: id("msg"),
-    conversationId,
-    sender,
-    body,
-    images,
-    system,
-    readByAdmin: sender === "admin",
-    createdAt: now,
-  };
+  const id = toInt(conversationId);
+  if (id == null) throw new Error("Conversation not found");
 
-  await updateStore((store) => {
-    const conversation = store.conversations.find((c) => c.id === conversationId);
-    if (!conversation) throw new Error("Conversation not found");
-    conversation.updatedAt = now;
-    store.messages.push(message);
-    return store;
+  return withTransaction(async (client) => {
+    const exists = await client.query(`SELECT id FROM conversations WHERE id = $1`, [id]);
+    if (!exists.rows.length) throw new Error("Conversation not found");
+
+    const msgRes = await client.query(
+      `INSERT INTO messages (conversation_id, sender, body, images, system, read_by_admin)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+       RETURNING *`,
+      [
+        id,
+        sender,
+        body,
+        JSON.stringify(images || []),
+        Boolean(system),
+        sender === "admin",
+      ],
+    );
+
+    await client.query(`UPDATE conversations SET updated_at = now() WHERE id = $1`, [id]);
+    return mapMessage(msgRes.rows[0]);
   });
-
-  return message;
 }
 
 export async function markConversationRead(conversationId) {
-  await updateStore((store) => {
-    store.messages.forEach((m) => {
-      if (m.conversationId === conversationId) m.readByAdmin = true;
-    });
-    return store;
-  });
+  const id = toInt(conversationId);
+  if (id == null) return;
+  await query(`UPDATE messages SET read_by_admin = true WHERE conversation_id = $1`, [id]);
 }
 
 export async function getSiteById(siteId) {
-  const store = await readStore();
-  return withNormalizedContent(store.sites.find((s) => s.id === siteId) || null);
+  const id = toInt(siteId);
+  if (id == null) return null;
+  const { rows } = await query(`SELECT * FROM sites WHERE id = $1`, [id]);
+  return withNormalizedContent(mapSite(rows[0]));
 }
 
 export async function getSiteBySlug(slug) {
-  const store = await readStore();
-  return withNormalizedContent(store.sites.find((s) => s.slug === slug) || null);
+  const { rows } = await query(`SELECT * FROM sites WHERE slug = $1`, [slug]);
+  return withNormalizedContent(mapSite(rows[0]));
 }
 
 export async function updateSiteContent(siteId, content) {
-  await updateStore((store) => {
-    const site = store.sites.find((s) => s.id === siteId);
-    if (!site) throw new Error("Site not found");
-    site.content = normalizeSiteContent(content);
-    site.updatedAt = new Date().toISOString();
-    return store;
-  });
-  return getSiteById(siteId);
+  const id = toInt(siteId);
+  if (id == null) throw new Error("Site not found");
+  const normalized = normalizeSiteContent(content);
+  const { rowCount } = await query(
+    `UPDATE sites SET content = $2::jsonb, updated_at = now() WHERE id = $1`,
+    [id, JSON.stringify(normalized)],
+  );
+  if (!rowCount) throw new Error("Site not found");
+  return getSiteById(id);
 }
 
 export async function addSitePage(siteId, { type, label, pageId } = {}) {
-  let updatedContent;
-  await updateStore((store) => {
-    const site = store.sites.find((s) => s.id === siteId);
-    if (!site) throw new Error("Site not found");
-    updatedContent = addPageToContent(site.content, { type, label, pageId });
-    site.content = updatedContent;
-    site.updatedAt = new Date().toISOString();
-    return store;
-  });
-  return getSiteById(siteId);
+  const id = toInt(siteId);
+  if (id == null) throw new Error("Site not found");
+
+  const site = await getSiteById(id);
+  if (!site) throw new Error("Site not found");
+
+  const nextContent = addPageToContent(site.content, { type, label, pageId });
+  await query(`UPDATE sites SET content = $2::jsonb, updated_at = now() WHERE id = $1`, [
+    id,
+    JSON.stringify(nextContent),
+  ]);
+  return getSiteById(id);
 }
 
 export async function createDraftFromConversation({
@@ -186,20 +267,26 @@ export async function createDraftFromConversation({
   layout = "multi-page",
   contentOverrides,
 }) {
-  const store = await readStore();
-  const conversation = store.conversations.find((c) => c.id === conversationId);
+  const convId = toInt(conversationId);
+  if (convId == null) throw new Error("Conversation not found");
+
+  const convRes = await query(`SELECT * FROM conversations WHERE id = $1`, [convId]);
+  const conversation = mapConversation(convRes.rows[0]);
   if (!conversation) throw new Error("Conversation not found");
+
+  const email = String(ownerEmail || "").toLowerCase().trim();
+  const existingUser = await query(`SELECT id FROM users WHERE email = $1`, [email]);
+  if (existingUser.rows.length) throw new Error("Owner email already exists");
 
   const baseSlug = slugify(brandName || conversation.name || "business");
   let slug = baseSlug;
   let i = 1;
-  while (store.sites.some((s) => s.slug === slug)) {
+  while (true) {
+    const slugCheck = await query(`SELECT id FROM sites WHERE slug = $1`, [slug]);
+    if (!slugCheck.rows.length) break;
     slug = `${baseSlug}-${i++}`;
   }
 
-  const siteId = id("site");
-  const userId = id("user");
-  const now = new Date().toISOString();
   const resolvedLayout = layout === "one-page" ? "one-page" : "multi-page";
   const content = normalizeSiteContent({
     ...createDefaultSiteContent({
@@ -213,79 +300,74 @@ export async function createDraftFromConversation({
   });
 
   const passwordHash = await hashPassword(ownerPassword);
-  const email = ownerEmail.toLowerCase();
 
-  await updateStore((s) => {
-    if (s.users.some((u) => u.email === email)) {
-      throw new Error("Owner email already exists");
-    }
+  return withTransaction(async (client) => {
+    const siteRes = await client.query(
+      `INSERT INTO sites (slug, conversation_id, owner_id, status, content)
+       VALUES ($1, $2, NULL, 'draft', $3::jsonb)
+       RETURNING *`,
+      [slug, convId, JSON.stringify(content)],
+    );
+    const site = mapSite(siteRes.rows[0]);
 
-    s.sites.push({
-      id: siteId,
+    const userRes = await client.query(
+      `INSERT INTO users (email, name, role, site_id, password_hash, must_change_password)
+       VALUES ($1, $2, 'owner', $3, $4, true)
+       RETURNING *`,
+      [email, brandName || conversation.name || "Site owner", site.id, passwordHash],
+    );
+    const ownerId = Number(userRes.rows[0].id);
+
+    await client.query(`UPDATE sites SET owner_id = $2, updated_at = now() WHERE id = $1`, [
+      site.id,
+      ownerId,
+    ]);
+    await client.query(
+      `UPDATE conversations SET site_id = $2, updated_at = now() WHERE id = $1`,
+      [convId, site.id],
+    );
+
+    return {
+      siteId: site.id,
       slug,
-      conversationId,
-      ownerId: userId,
-      status: "draft",
-      content,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    s.users.push({
-      id: userId,
-      email,
-      name: brandName || conversation.name || "Site owner",
-      role: "owner",
-      siteId,
-      passwordHash,
-      mustChangePassword: true,
-      createdAt: now,
-    });
-
-    const conv = s.conversations.find((c) => c.id === conversationId);
-    conv.siteId = siteId;
-    conv.updatedAt = now;
-
-    return s;
+      ownerEmail: email,
+      ownerPassword,
+      layout: resolvedLayout,
+    };
   });
-
-  return { siteId, slug, ownerEmail: email, ownerPassword, layout: resolvedLayout };
 }
 
 export async function listSites() {
-  const store = await readStore();
-  return store.sites
-    .map((site) => withNormalizedContent(site))
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  const { rows } = await query(`SELECT * FROM sites ORDER BY updated_at DESC`);
+  return rows.map((row) => withNormalizedContent(mapSite(row)));
 }
 
-/**
- * Admin: delete a site, its owner login(s), and unlink the conversation
- * so a new draft can be created from the same chat.
- */
 export async function deleteSite(siteId) {
-  let deleted = null;
-  await updateStore((store) => {
-    const site = store.sites.find((s) => s.id === siteId);
+  const id = toInt(siteId);
+  if (id == null) throw new Error("Site not found");
+
+  return withTransaction(async (client) => {
+    const siteRes = await client.query(`SELECT * FROM sites WHERE id = $1`, [id]);
+    const site = mapSite(siteRes.rows[0]);
     if (!site) throw new Error("Site not found");
-    deleted = { id: site.id, slug: site.slug, conversationId: site.conversationId };
 
-    const ownerIds = store.users
-      .filter((u) => u.siteId === siteId || u.id === site.ownerId)
-      .map((u) => u.id);
+    await client.query(
+      `UPDATE conversations SET site_id = NULL, updated_at = now() WHERE site_id = $1`,
+      [id],
+    );
 
-    store.sites = store.sites.filter((s) => s.id !== siteId);
-    store.users = store.users.filter((u) => !ownerIds.includes(u.id));
-    store.sessions = store.sessions.filter((s) => !ownerIds.includes(s.userId));
+    // Delete owner login(s); sessions cascade via FK
+    await client.query(
+      `DELETE FROM users WHERE role = 'owner' AND (id = $1 OR site_id = $2)`,
+      [site.ownerId, id],
+    );
 
-    store.conversations.forEach((c) => {
-      if (c.siteId === siteId) {
-        c.siteId = null;
-        c.updatedAt = new Date().toISOString();
-      }
-    });
+    await client.query(`DELETE FROM sites WHERE id = $1`, [id]);
 
-    return store;
+    return {
+      id: site.id,
+      slug: site.slug,
+      conversationId: site.conversationId,
+    };
   });
-  return deleted;
 }

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
-import { createHmac, timingSafeEqual } from "crypto";
-import { id, readStore, updateStore } from "./db";
+import { createHmac, timingSafeEqual, randomBytes } from "crypto";
+import { query } from "./db";
 
 const COOKIE_NAME = "tn_builder_session";
 const SESSION_DAYS = 14;
@@ -14,15 +14,15 @@ function sign(value) {
   return createHmac("sha256", secret()).update(value).digest("hex");
 }
 
-function packToken(sessionId) {
-  const sig = sign(sessionId);
-  return `${sessionId}.${sig}`;
+function packToken(sessionToken) {
+  const sig = sign(sessionToken);
+  return `${sessionToken}.${sig}`;
 }
 
-function unpackToken(token) {
-  if (!token || !token.includes(".")) return null;
-  const [sessionId, sig] = token.split(".");
-  const expected = sign(sessionId);
+function unpackToken(cookieValue) {
+  if (!cookieValue || !cookieValue.includes(".")) return null;
+  const [sessionToken, sig] = cookieValue.split(".");
+  const expected = sign(sessionToken);
   try {
     const a = Buffer.from(sig);
     const b = Buffer.from(expected);
@@ -30,7 +30,7 @@ function unpackToken(token) {
   } catch {
     return null;
   }
-  return sessionId;
+  return sessionToken;
 }
 
 export async function hashPassword(password) {
@@ -41,60 +41,72 @@ export async function verifyPassword(password, hash) {
   return bcrypt.compare(password, hash);
 }
 
+function mapUser(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    siteId: row.site_id == null ? null : Number(row.site_id),
+    passwordHash: row.password_hash,
+    mustChangePassword: Boolean(row.must_change_password),
+    createdAt: row.created_at,
+  };
+}
+
+export async function getUserByEmail(email) {
+  const { rows } = await query(`SELECT * FROM users WHERE email = $1 LIMIT 1`, [
+    String(email || "").toLowerCase().trim(),
+  ]);
+  return mapUser(rows[0]);
+}
+
 export async function ensureAdminUser() {
   const email = (process.env.ADMIN_EMAIL || "admin@technonaire.com").toLowerCase();
   const password = process.env.ADMIN_PASSWORD || "changeme123";
 
-  return updateStore(async (store) => {
-    let admin = store.users.find((u) => u.role === "admin");
-    if (!admin) {
-      admin = {
-        id: id("user"),
-        email,
-        name: "Technonaire Admin",
-        role: "admin",
-        passwordHash: await hashPassword(password),
-        mustChangePassword: false,
-        createdAt: new Date().toISOString(),
-      };
-      store.users.push(admin);
-    }
-    return store;
-  });
+  const existing = await query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
+  if (existing.rows.length) return;
+
+  const passwordHash = await hashPassword(password);
+  await query(
+    `INSERT INTO users (email, name, role, password_hash, must_change_password)
+     VALUES ($1, $2, 'admin', $3, false)`,
+    [email, "Technonaire Admin", passwordHash],
+  );
 }
 
 export async function createSession(userId) {
-  const sessionId = id("sess");
-  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const sessionToken = randomBytes(24).toString("hex");
+  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
 
-  await updateStore((store) => {
-    store.sessions = store.sessions.filter((s) => s.userId !== userId);
-    store.sessions.push({ id: sessionId, userId, expiresAt });
-    return store;
-  });
+  await query(`DELETE FROM sessions WHERE user_id = $1`, [userId]);
+  await query(`INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)`, [
+    userId,
+    sessionToken,
+    expiresAt.toISOString(),
+  ]);
 
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, packToken(sessionId), {
+  cookieStore.set(COOKIE_NAME, packToken(sessionToken), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    expires: new Date(expiresAt),
+    expires: expiresAt,
   });
 
-  return sessionId;
+  return sessionToken;
 }
 
 export async function destroySession() {
   const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  const sessionId = unpackToken(token);
+  const cookieValue = cookieStore.get(COOKIE_NAME)?.value;
+  const sessionToken = unpackToken(cookieValue);
 
-  if (sessionId) {
-    await updateStore((store) => {
-      store.sessions = store.sessions.filter((s) => s.id !== sessionId);
-      return store;
-    });
+  if (sessionToken) {
+    await query(`DELETE FROM sessions WHERE token = $1`, [sessionToken]);
   }
 
   cookieStore.delete(COOKIE_NAME);
@@ -103,16 +115,20 @@ export async function destroySession() {
 export async function getCurrentUser() {
   await ensureAdminUser();
   const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  const sessionId = unpackToken(token);
-  if (!sessionId) return null;
+  const cookieValue = cookieStore.get(COOKIE_NAME)?.value;
+  const sessionToken = unpackToken(cookieValue);
+  if (!sessionToken) return null;
 
-  const store = await readStore();
-  const session = store.sessions.find((s) => s.id === sessionId);
-  if (!session) return null;
-  if (new Date(session.expiresAt) < new Date()) return null;
+  const { rows } = await query(
+    `SELECT u.*
+     FROM sessions s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.token = $1 AND s.expires_at > now()
+     LIMIT 1`,
+    [sessionToken],
+  );
 
-  const user = store.users.find((u) => u.id === session.userId);
+  const user = mapUser(rows[0]);
   if (!user) return null;
 
   return {
@@ -120,8 +136,8 @@ export async function getCurrentUser() {
     email: user.email,
     name: user.name,
     role: user.role,
-    siteId: user.siteId || null,
-    mustChangePassword: Boolean(user.mustChangePassword),
+    siteId: user.siteId,
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
