@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "start:railway": "bash scripts/railway-start.sh",
+    "db:migrate": "node scripts/migrate.mjs",
     "lint": "eslint"
   },
   "engines": {

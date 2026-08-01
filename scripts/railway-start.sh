@@ -13,4 +13,13 @@ fi
 ln -sfn "${VOLUME_ROOT}/uploads" public/uploads
 
 echo "Uploads volume ready at ${VOLUME_ROOT}/uploads"
+
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "ERROR: DATABASE_URL is not set on this service."
+  exit 1
+fi
+
+echo "Running Postgres migrate..."
+node scripts/migrate.mjs
+
 exec npm run start -- --hostname 0.0.0.0 --port "${PORT:-3000}"
