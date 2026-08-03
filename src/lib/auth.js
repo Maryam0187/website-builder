@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { createHmac, timingSafeEqual, randomBytes } from "crypto";
 import { query } from "./db";
@@ -146,4 +147,48 @@ export async function requireUser(roles = []) {
   if (!user) return null;
   if (roles.length && !roles.includes(user.role)) return null;
   return user;
+}
+
+/** API helper: block owners who still have the invite temporary password. */
+export function denyIfMustChangePassword(user) {
+  if (!user?.mustChangePassword) return null;
+  return NextResponse.json(
+    {
+      error: "You must change your temporary password before continuing.",
+      code: "MUST_CHANGE_PASSWORD",
+    },
+    { status: 403 },
+  );
+}
+
+export async function changePassword(userId, currentPassword, newPassword) {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error("User not found");
+
+  const next = String(newPassword || "");
+  if (next.length < 8) {
+    throw new Error("New password must be at least 8 characters");
+  }
+
+  const { rows } = await query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [id]);
+  const user = mapUser(rows[0]);
+  if (!user) throw new Error("User not found");
+
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    throw new Error("Current password is incorrect");
+  }
+
+  if (await verifyPassword(next, user.passwordHash)) {
+    throw new Error("New password must be different from your temporary password");
+  }
+
+  const passwordHash = await hashPassword(next);
+  await query(
+    `UPDATE users
+     SET password_hash = $2, must_change_password = false
+     WHERE id = $1`,
+    [id, passwordHash],
+  );
+
+  return { ok: true };
 }

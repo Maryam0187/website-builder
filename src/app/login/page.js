@@ -10,6 +10,19 @@ function safeNextPath(next) {
   return next;
 }
 
+function redirectAfterLogin(router, user, nextPath) {
+  if (user.mustChangePassword) {
+    const qs = nextPath ? `?next=${encodeURIComponent(nextPath)}` : "";
+    router.replace(`/change-password${qs}`);
+    return;
+  }
+  if (nextPath) {
+    router.replace(nextPath);
+    return;
+  }
+  router.replace(user.role === "admin" ? "/admin" : "/edit");
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -24,12 +37,7 @@ function LoginForm() {
       .then((r) => r.json())
       .then((data) => {
         if (!data.user) return;
-        if (nextPath) {
-          router.replace(nextPath);
-          return;
-        }
-        if (data.user.role === "admin") router.replace("/admin");
-        if (data.user.role === "owner") router.replace("/edit");
+        redirectAfterLogin(router, data.user, nextPath);
       })
       .catch(() => {});
   }, [router, nextPath]);
@@ -47,11 +55,7 @@ function LoginForm() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
 
-      if (nextPath) {
-        router.push(nextPath);
-        return;
-      }
-      router.push(data.user.role === "admin" ? "/admin" : "/edit");
+      redirectAfterLogin(router, data.user, nextPath);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -69,8 +73,8 @@ function LoginForm() {
           <BrandLogo href="/" className="mb-6" />
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl">Owner / Admin login</h1>
           <p className="mt-2 text-sm leading-6 text-blue-100">
-            Login is required to preview and edit your website. Use the email and password from your
-            Technonaire chat invite.
+            Login is required to preview and edit your website. Use the email and temporary password
+            from your Technonaire chat invite — you’ll set a new password on first login.
           </p>
         </div>
         <div>

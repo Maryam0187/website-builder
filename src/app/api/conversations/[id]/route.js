@@ -5,7 +5,7 @@ import {
   getConversationByToken,
   markConversationRead,
 } from "@/lib/store-actions";
-import { requireUser } from "@/lib/auth";
+import { denyIfMustChangePassword, requireUser } from "@/lib/auth";
 import { toInt } from "@/lib/db";
 
 function sameId(a, b) {
@@ -36,6 +36,8 @@ export async function GET(request, { params }) {
   }
 
   if (user?.role === "owner") {
+    const blocked = denyIfMustChangePassword(user);
+    if (blocked) return blocked;
     const data = await getConversation(id);
     if (!data || !sameId(data.conversation.siteId, user.siteId)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -72,6 +74,8 @@ export async function POST(request, { params }) {
   }
 
   if (user?.role === "owner") {
+    const blocked = denyIfMustChangePassword(user);
+    if (blocked) return blocked;
     const data = await getConversation(id);
     if (!data || !sameId(data.conversation.siteId, user.siteId)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });

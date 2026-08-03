@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { denyIfMustChangePassword, requireUser } from "@/lib/auth";
 import {
   createDraftFromConversation,
   addMessage,
@@ -17,6 +17,8 @@ export async function GET(request) {
   if (slug) {
     const user = await requireUser(["admin", "owner"]);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const blocked = denyIfMustChangePassword(user);
+    if (blocked) return blocked;
 
     const { getSiteBySlug } = await import("@/lib/store-actions");
     const site = await getSiteBySlug(slug);
@@ -29,6 +31,8 @@ export async function GET(request) {
 
   const user = await requireUser(["admin", "owner"]);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const blocked = denyIfMustChangePassword(user);
+  if (blocked) return blocked;
 
   if (siteId) {
     const site = await getSiteById(siteId);
@@ -90,7 +94,9 @@ export async function POST(request) {
       `Email: ${draft.ownerEmail}`,
       `Temporary password: ${draft.ownerPassword}`,
       ``,
-      `After login:`,
+      `On first login you’ll be asked to choose a new password.`,
+      ``,
+      `After that:`,
       `• Preview: ${appUrl}/site/${draft.slug}`,
       `• Edit: ${appUrl}/edit`,
       ``,
@@ -114,6 +120,8 @@ export async function POST(request) {
 export async function PUT(request) {
   const user = await requireUser(["admin", "owner"]);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const blocked = denyIfMustChangePassword(user);
+  if (blocked) return blocked;
 
   const body = await request.json();
   const siteId = body.siteId;

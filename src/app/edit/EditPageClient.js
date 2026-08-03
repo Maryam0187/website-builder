@@ -52,6 +52,10 @@ export default function EditPageClient() {
         router.replace("/login");
         return;
       }
+      if (auth.user.mustChangePassword) {
+        router.replace("/change-password?next=/edit");
+        return;
+      }
       if (auth.user.role === "admin") {
         router.replace("/admin");
         return;

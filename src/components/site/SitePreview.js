@@ -9,10 +9,15 @@ import BrandLogo from "@/components/BrandLogo";
 async function loadPreview(slug, pageParam) {
   const user = await requireUser(["admin", "owner"]);
 
+  const next =
+    pageParam && pageParam !== "home" ? `/site/${slug}/${pageParam}` : `/site/${slug}`;
+
   if (!user) {
-    const next =
-      pageParam && pageParam !== "home" ? `/site/${slug}/${pageParam}` : `/site/${slug}`;
     redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
+
+  if (user.mustChangePassword) {
+    redirect(`/change-password?next=${encodeURIComponent(next)}`);
   }
 
   const site = await getSiteBySlug(slug);

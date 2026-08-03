@@ -36,6 +36,7 @@ export async function POST(request) {
       name: user.name,
       role: user.role,
       siteId: user.siteId || null,
+      mustChangePassword: Boolean(user.mustChangePassword),
     },
   });
 }
