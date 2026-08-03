@@ -6,6 +6,13 @@ import {
   markConversationRead,
 } from "@/lib/store-actions";
 import { requireUser } from "@/lib/auth";
+import { toInt } from "@/lib/db";
+
+function sameId(a, b) {
+  const left = toInt(a);
+  const right = toInt(b);
+  return left != null && right != null && left === right;
+}
 
 export async function GET(request, { params }) {
   const { id } = await params;
@@ -22,7 +29,7 @@ export async function GET(request, { params }) {
 
   if (token) {
     const data = await getConversationByToken(token);
-    if (!data || data.conversation.id !== id) {
+    if (!data || !sameId(data.conversation.id, id)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     return NextResponse.json(data);
@@ -30,7 +37,7 @@ export async function GET(request, { params }) {
 
   if (user?.role === "owner") {
     const data = await getConversation(id);
-    if (!data || data.conversation.siteId !== user.siteId) {
+    if (!data || !sameId(data.conversation.siteId, user.siteId)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     return NextResponse.json(data);
@@ -66,7 +73,7 @@ export async function POST(request, { params }) {
 
   if (user?.role === "owner") {
     const data = await getConversation(id);
-    if (!data || data.conversation.siteId !== user.siteId) {
+    if (!data || !sameId(data.conversation.siteId, user.siteId)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const message = await addMessage({
@@ -80,7 +87,7 @@ export async function POST(request, { params }) {
 
   if (token) {
     const data = await getConversationByToken(token);
-    if (!data || data.conversation.id !== id) {
+    if (!data || !sameId(data.conversation.id, id)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const message = await addMessage({
