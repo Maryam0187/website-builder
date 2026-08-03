@@ -135,6 +135,71 @@ export async function getConversationByToken(accessToken) {
   };
 }
 
+export async function getConversationByEmail(email) {
+  const normalizedEmail = String(email || "").toLowerCase().trim();
+  if (!normalizedEmail) return null;
+  const { rows } = await query(
+    `SELECT * FROM conversations WHERE lower(email) = lower($1) LIMIT 1`,
+    [normalizedEmail],
+  );
+  return mapConversation(rows[0]);
+}
+
+/**
+ * One chat per email. If email exists, append message and return existing token.
+ * If new, create conversation.
+ */
+export async function createOrContinueConversation({
+  name,
+  email,
+  websiteName,
+  phone,
+  businessType,
+  message,
+  images = [],
+}) {
+  const normalizedEmail = String(email || "").toLowerCase().trim();
+  const siteName = String(websiteName || "").trim();
+  const existing = await getConversationByEmail(normalizedEmail);
+
+  if (existing) {
+    await addMessage({
+      conversationId: existing.id,
+      sender: "guest",
+      body: message,
+      images,
+    });
+    // Refresh profile fields on the existing conversation
+    await query(
+      `UPDATE conversations
+       SET name = COALESCE(NULLIF($2, ''), name),
+           website_name = COALESCE(NULLIF($3, ''), website_name),
+           phone = COALESCE(NULLIF($4, ''), phone),
+           business_type = COALESCE(NULLIF($5, ''), business_type),
+           updated_at = now()
+       WHERE id = $1`,
+      [existing.id, name, siteName, phone || "", businessType || ""],
+    );
+    return {
+      conversationId: existing.id,
+      accessToken: existing.accessToken,
+      email: normalizedEmail,
+      websiteName: siteName || existing.websiteName,
+      existing: true,
+    };
+  }
+
+  return createConversation({
+    name,
+    email: normalizedEmail,
+    websiteName: siteName,
+    phone,
+    businessType,
+    message,
+    images,
+  });
+}
+
 export async function createConversation({
   name,
   email,
@@ -149,6 +214,14 @@ export async function createConversation({
   const accessToken = token("tok");
 
   return withTransaction(async (client) => {
+    const existing = await client.query(
+      `SELECT id FROM conversations WHERE lower(email) = lower($1) LIMIT 1`,
+      [normalizedEmail],
+    );
+    if (existing.rows.length) {
+      throw new Error("This email already has a conversation. Use the chat link from your email.");
+    }
+
     const convRes = await client.query(
       `INSERT INTO conversations
         (name, email, website_name, phone, business_type, access_token, email_verified, status)
@@ -169,6 +242,7 @@ export async function createConversation({
       accessToken,
       email: normalizedEmail,
       websiteName: siteName,
+      existing: false,
     };
   });
 }

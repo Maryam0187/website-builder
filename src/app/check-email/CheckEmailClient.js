@@ -7,6 +7,7 @@ import BrandLogo from "@/components/BrandLogo";
 export default function CheckEmailClient() {
   const searchParams = useSearchParams();
   const email = searchParams.get("email") || "your email";
+  const existing = searchParams.get("existing") === "1";
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#040b1a] px-6 text-white">
@@ -23,7 +24,16 @@ export default function CheckEmailClient() {
           Check your email
         </h1>
         <p className="mt-4 text-base leading-7 text-blue-100">
-          We sent your private chat link to <strong className="text-white">{email}</strong>.
+          {existing ? (
+            <>
+              This email already has a chat. We sent your chat link again to{" "}
+              <strong className="text-white">{email}</strong> and added your new message there.
+            </>
+          ) : (
+            <>
+              We sent your private chat link to <strong className="text-white">{email}</strong>.
+            </>
+          )}
         </p>
         <p className="mt-3 text-sm leading-6 text-blue-100">
           Open that link to verify your email and continue the conversation. Keep the email so you

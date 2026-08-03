@@ -45,7 +45,11 @@ export default function MessageUsForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      router.push(`/check-email?email=${encodeURIComponent(data.email || form.email)}`);
+      const params = new URLSearchParams({
+        email: data.email || form.email,
+      });
+      if (data.existing) params.set("existing", "1");
+      router.push(`/check-email?${params.toString()}`);
     } catch (err) {
       setError(err.message);
     } finally {

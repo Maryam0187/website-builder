@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  createConversation,
+  createOrContinueConversation,
   listConversations,
   getConversationByToken,
   markConversationEmailVerified,
@@ -48,15 +48,23 @@ export async function POST(request) {
     return NextResponse.json({ error: "Enter a valid email address" }, { status: 400 });
   }
 
-  const result = await createConversation({
-    name,
-    email,
-    websiteName,
-    phone,
-    businessType,
-    message,
-    images,
-  });
+  let result;
+  try {
+    result = await createOrContinueConversation({
+      name,
+      email,
+      websiteName,
+      phone,
+      businessType,
+      message,
+      images,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error.message || "Could not start conversation" },
+      { status: 400 },
+    );
+  }
 
   let emailSent = false;
   let emailMocked = false;
@@ -84,5 +92,6 @@ export async function POST(request) {
     email: result.email,
     emailSent,
     emailMocked,
+    existing: Boolean(result.existing),
   });
 }

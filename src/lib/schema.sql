@@ -80,5 +80,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_access_token ON conversations(access_token);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_email_unique ON conversations (lower(email));
 CREATE INDEX IF NOT EXISTS idx_sites_slug ON sites(slug);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
