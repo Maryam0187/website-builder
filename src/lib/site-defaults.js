@@ -328,3 +328,11 @@ export function addPageToContent(content, { type, label, pageId: requestedId } =
 export function isOnePageLayout(content) {
   return normalizeSiteContent(content).layout === "one-page";
 }
+
+/** Switch between one-page (scroll sections) and multi-page (separate routes). */
+export function setLayoutOnContent(content, layout) {
+  const next = normalizeSiteContent(structuredClone(content));
+  const resolved = layout === "one-page" ? "one-page" : "multi-page";
+  next.layout = resolved;
+  return next;
+}

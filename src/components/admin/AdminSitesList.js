@@ -7,8 +7,12 @@ import AdminAddPageForm from "./AdminAddPageForm";
 export default function AdminSitesList({ initialSites = [] }) {
   const [sites, setSites] = useState(initialSites);
   const [openId, setOpenId] = useState(null);
-  const [busyId, setBusyId] = useState(null);
+  const [busy, setBusy] = useState(null); // { id, action }
   const [status, setStatus] = useState("");
+
+  function isBusy(siteId, action) {
+    return busy?.id === siteId && (!action || busy.action === action);
+  }
 
   function handleAdded(siteId, updatedSite) {
     setSites((prev) => prev.map((s) => (s.id === siteId ? updatedSite : s)));
@@ -21,7 +25,7 @@ export default function AdminSitesList({ initialSites = [] }) {
     );
     if (!ok) return;
 
-    setBusyId(site.id);
+    setBusy({ id: site.id, action: "delete" });
     setStatus("");
     try {
       const res = await fetch(`/api/site?id=${encodeURIComponent(site.id)}`, {
@@ -35,7 +39,36 @@ export default function AdminSitesList({ initialSites = [] }) {
     } catch (err) {
       setStatus(err.message || "Delete failed");
     } finally {
-      setBusyId(null);
+      setBusy(null);
+    }
+  }
+
+  async function handleLayoutSwitch(site) {
+    const name = site.content?.brand?.name || site.slug;
+    const current = site.content?.layout === "one-page" ? "one-page" : "multi-page";
+    const next = current === "one-page" ? "multi-page" : "one-page";
+    const nextLabel = next === "one-page" ? "one-page (scroll)" : "multi-page";
+    const ok = window.confirm(
+      `Switch “${name}” to ${nextLabel}?\n\nA note will be posted in their chat.`,
+    );
+    if (!ok) return;
+
+    setBusy({ id: site.id, action: "layout" });
+    setStatus("");
+    try {
+      const res = await fetch("/api/site/layout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteId: site.id, layout: next, notify: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Layout update failed");
+      setSites((prev) => prev.map((s) => (s.id === site.id ? data.site : s)));
+      setStatus(`Updated “${name}” to ${nextLabel} — notified in chat`);
+    } catch (err) {
+      setStatus(err.message || "Layout update failed");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -74,6 +107,18 @@ export default function AdminSitesList({ initialSites = [] }) {
                   </Link>
                   <button
                     type="button"
+                    disabled={Boolean(busy?.id === site.id)}
+                    onClick={() => handleLayoutSwitch(site)}
+                    className="rounded-full border border-cyan-400/35 px-3 py-1.5 text-xs font-semibold text-cyan-100 hover:bg-cyan-500/15 disabled:opacity-60"
+                  >
+                    {isBusy(site.id, "layout")
+                      ? "Updating…"
+                      : site.content?.layout === "one-page"
+                        ? "→ Multi-page"
+                        : "→ One page"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setOpenId((id) => (id === site.id ? null : site.id))}
                     className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/15"
                   >
@@ -81,11 +126,11 @@ export default function AdminSitesList({ initialSites = [] }) {
                   </button>
                   <button
                     type="button"
-                    disabled={busyId === site.id}
+                    disabled={Boolean(busy?.id === site.id)}
                     onClick={() => handleDelete(site)}
                     className="rounded-full border border-rose-400/40 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/15 disabled:opacity-60"
                   >
-                    {busyId === site.id ? "Deleting…" : "Delete"}
+                    {isBusy(site.id, "delete") ? "Deleting…" : "Delete"}
                   </button>
                 </div>
               </div>

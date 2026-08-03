@@ -3,6 +3,7 @@ import {
   addPageToContent,
   createDefaultSiteContent,
   normalizeSiteContent,
+  setLayoutOnContent,
   slugify,
 } from "./site-defaults";
 import { hashPassword } from "./auth";
@@ -324,6 +325,27 @@ export async function addSitePage(siteId, { type, label, pageId } = {}) {
   if (!site) throw new Error("Site not found");
 
   const nextContent = addPageToContent(site.content, { type, label, pageId });
+  await query(`UPDATE sites SET content = $2::jsonb, updated_at = now() WHERE id = $1`, [
+    id,
+    JSON.stringify(nextContent),
+  ]);
+  return getSiteById(id);
+}
+
+export async function setSiteLayout(siteId, layout) {
+  const id = toInt(siteId);
+  if (id == null) throw new Error("Site not found");
+
+  const site = await getSiteById(id);
+  if (!site) throw new Error("Site not found");
+
+  const resolved = layout === "one-page" ? "one-page" : "multi-page";
+  const current = site.content?.layout === "one-page" ? "one-page" : "multi-page";
+  if (current === resolved) {
+    return site;
+  }
+
+  const nextContent = setLayoutOnContent(site.content, resolved);
   await query(`UPDATE sites SET content = $2::jsonb, updated_at = now() WHERE id = $1`, [
     id,
     JSON.stringify(nextContent),
