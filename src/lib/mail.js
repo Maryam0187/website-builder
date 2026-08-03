@@ -55,9 +55,13 @@ export async function sendChatLinkEmail({ to, name, accessToken }) {
     `— Technonaire`,
   ].join("\n");
 
+  const logoUrl = `${base}/email-logo.png`;
+
   const html = `
     <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#14201c;line-height:1.6">
-      <p style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#0b3d91;font-weight:700">Technonaire</p>
+      <p style="margin:0 0 20px">
+        <img src="${logoUrl}" alt="Technonaire" width="160" height="86" style="display:block;border:0;outline:none;width:160px;height:auto;max-width:100%" />
+      </p>
       <h1 style="font-size:24px;margin:8px 0 16px">Your private chat link</h1>
       <p>Hi ${escapeHtml(name || "there")},</p>
       <p>Thanks for messaging us. Open the link below to continue your chat and verify your email.</p>
