@@ -12,9 +12,21 @@ const sans = Source_Sans_3({
 });
 
 export const metadata = {
-  title: "Technonaire Easy Website",
+  title: "Easy Website — First draft sites you click to edit",
   description:
-    "Message Technonaire, get a first draft, then click to edit your website. Built for non-tech business owners.",
+    "Message us, get a first draft, then click to edit your website. Built for non-tech business owners.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  openGraph: {
+    title: "Easy Website",
+    description: "First draft sites you click to edit.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }) {
