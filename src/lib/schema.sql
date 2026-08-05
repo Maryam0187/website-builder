@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS conversations (
   email_verified     BOOLEAN NOT NULL DEFAULT false,
   email_verified_at  TIMESTAMPTZ NULL,
   site_id            BIGINT NULL,
+  bot_onboarded      BOOLEAN NOT NULL DEFAULT false,
+  bot_step           TEXT NOT NULL DEFAULT 'none',
+  bot_answers        JSONB NOT NULL DEFAULT '{}',
   status             TEXT NOT NULL DEFAULT 'open',
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -35,13 +38,28 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS messages (
   id               BIGSERIAL PRIMARY KEY,
   conversation_id  BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-  sender           TEXT NOT NULL CHECK (sender IN ('guest', 'owner', 'admin')),
+  sender           TEXT NOT NULL CHECK (sender IN ('guest', 'owner', 'admin', 'bot')),
   body             TEXT NOT NULL,
   images           JSONB NOT NULL DEFAULT '[]',
   system           BOOLEAN NOT NULL DEFAULT false,
   read_by_admin    BOOLEAN NOT NULL DEFAULT false,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Existing databases created before bot support
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bot_onboarded BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bot_step TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bot_answers JSONB NOT NULL DEFAULT '{}';
+
+DO $$
+BEGIN
+  ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_sender_check;
+  ALTER TABLE messages
+    ADD CONSTRAINT messages_sender_check
+    CHECK (sender IN ('guest', 'owner', 'admin', 'bot'));
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS sites (
   id               BIGSERIAL PRIMARY KEY,

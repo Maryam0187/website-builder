@@ -108,13 +108,13 @@ function LoginForm() {
       </form>
 
       <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm leading-6 text-blue-100">
-        <p className="font-semibold text-white">Guest? No password needed</p>
+        <p className="font-semibold text-white">Need a sample site?</p>
         <p className="mt-1">
           Start with{" "}
           <Link href="/#message" className="font-medium text-cyan-200 underline">
-            Message us
+            name, email & website name
           </Link>
-          . Open the chat link from your email until we send owner login.
+          . Open the chat link — the assistant creates your draft and posts the login there.
         </p>
       </div>
     </div>

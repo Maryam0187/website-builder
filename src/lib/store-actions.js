@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { query, token, toInt, withTransaction } from "./db";
 import {
   addPageToContent,
@@ -7,9 +8,20 @@ import {
   slugify,
 } from "./site-defaults";
 import { hashPassword } from "./auth";
+import { BOT_STEPS, getOnboardingPrompt, labelForOption } from "./chat-onboarding";
+
+/** Temporary owner password — hashed in DB; plaintext returned once for chat/login. */
+export function generateOwnerPassword() {
+  return `EW-${nanoid(10)}`;
+}
 
 function mapConversation(row) {
   if (!row) return null;
+  const botStep = row.bot_step || (row.bot_onboarded ? BOT_STEPS.DONE : BOT_STEPS.NONE);
+  const botAnswers =
+    row.bot_answers && typeof row.bot_answers === "object" && !Array.isArray(row.bot_answers)
+      ? row.bot_answers
+      : {};
   return {
     id: Number(row.id),
     name: row.name,
@@ -21,10 +33,26 @@ function mapConversation(row) {
     emailVerified: Boolean(row.email_verified),
     emailVerifiedAt: row.email_verified_at || null,
     siteId: row.site_id == null ? null : Number(row.site_id),
+    botOnboarded: Boolean(row.bot_onboarded) || botStep === BOT_STEPS.DONE,
+    botStep,
+    botAnswers,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function parseBotAnswers(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return { ...value };
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
 }
 
 function mapMessage(row) {
@@ -278,13 +306,261 @@ export async function addMessage({ conversationId, sender, body, images = [], sy
         body,
         JSON.stringify(images || []),
         Boolean(system),
-        sender === "admin",
+        sender === "admin" || sender === "bot",
       ],
     );
 
     await client.query(`UPDATE conversations SET updated_at = now() WHERE id = $1`, [id]);
     return mapMessage(msgRes.rows[0]);
   });
+}
+
+async function finishBotOnboardingAndCreateDraft(conversation) {
+  const siteName = conversation.websiteName || "your business";
+  const answers = parseBotAnswers(conversation.botAnswers);
+  const layout = answers.layout === "one-page" ? "one-page" : "multi-page";
+  const phone = answers.phone || conversation.phone || "";
+  const businessType = answers.businessType || conversation.businessType || "";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  await query(
+    `UPDATE conversations
+     SET phone = COALESCE(NULLIF($2, ''), phone),
+         business_type = COALESCE(NULLIF($3, ''), business_type),
+         bot_step = $4,
+         bot_onboarded = true,
+         updated_at = now()
+     WHERE id = $1`,
+    [conversation.id, phone, businessType, BOT_STEPS.DONE],
+  );
+
+  if (conversation.siteId || !conversation.email) {
+    await addMessage({
+      conversationId: conversation.id,
+      sender: "bot",
+      body: "Thanks — I’ve saved your answers. Our team can use them if you need design changes.",
+      system: true,
+    });
+    return getConversationByToken(conversation.accessToken);
+  }
+
+  try {
+    const ownerPassword = generateOwnerPassword();
+    const draft = await createDraftFromConversation({
+      conversationId: conversation.id,
+      brandName: siteName,
+      ownerEmail: conversation.email,
+      ownerPassword,
+      phone,
+      address: "",
+      layout,
+    });
+
+    const layoutLabel = layout === "one-page" ? "one-page (scroll)" : "multi-page";
+    await addMessage({
+      conversationId: conversation.id,
+      sender: "bot",
+      body: [
+        `Thanks! I’ve created your sample website draft for “${siteName}” (${layoutLabel}).`,
+        ``,
+        `Login: ${appUrl}/login`,
+        `Email: ${draft.ownerEmail}`,
+        `Temporary password: ${draft.ownerPassword}`,
+        ``,
+        `On first login you’ll choose a new password.`,
+        ``,
+        `Preview: ${appUrl}/site/${draft.slug}`,
+        `Edit: ${appUrl}/edit`,
+        ``,
+        `Change text and photos yourself. Message us here if you want a custom design or more pages.`,
+      ].join("\n"),
+      system: true,
+    });
+  } catch (error) {
+    await addMessage({
+      conversationId: conversation.id,
+      sender: "bot",
+      body: [
+        `I couldn’t create your sample draft automatically (${error.message || "error"}).`,
+        `Our team will set it up for you in this chat shortly.`,
+      ].join("\n"),
+      system: true,
+    });
+  }
+
+  return getConversationByToken(conversation.accessToken);
+}
+
+/**
+ * First open of chat link: welcome + start choice questions (draft created after answers).
+ */
+export async function startChatBotOnboarding(accessToken) {
+  const data = await getConversationByToken(accessToken);
+  if (!data) return null;
+
+  const { conversation } = data;
+  if (conversation.botStep === BOT_STEPS.DONE || conversation.botOnboarded) {
+    return {
+      ...data,
+      onboarding: null,
+    };
+  }
+
+  if (conversation.botStep === BOT_STEPS.NONE) {
+    const claimed = await query(
+      `UPDATE conversations
+       SET bot_step = $2, updated_at = now()
+       WHERE id = $1 AND bot_step = $3
+       RETURNING id`,
+      [conversation.id, BOT_STEPS.BUSINESS_TYPE, BOT_STEPS.NONE],
+    );
+
+    if (claimed.rows.length) {
+      const siteName = conversation.websiteName || "your business";
+      const guestName = conversation.name || "there";
+      await addMessage({
+        conversationId: conversation.id,
+        sender: "bot",
+        body: [
+          `Hi ${guestName}! I'm the Easy Website assistant.`,
+          ``,
+          `Thanks for starting a site for “${siteName}”.`,
+          `Tap an option below for a few quick questions — then I’ll create your sample draft with a login password.`,
+        ].join("\n"),
+        system: true,
+      });
+    }
+  }
+
+  const refreshed = await getConversationByToken(accessToken);
+  const step = refreshed.conversation.botStep;
+  return {
+    ...refreshed,
+    onboarding: getOnboardingPrompt(step),
+  };
+}
+
+/** Guest taps an onboarding option (or submits phone). */
+export async function answerChatBotOnboarding(accessToken, { value, text } = {}) {
+  const data = await getConversationByToken(accessToken);
+  if (!data) throw new Error("Conversation not found");
+
+  const { conversation } = data;
+  const step = conversation.botStep;
+  if (step === BOT_STEPS.DONE || conversation.botOnboarded) {
+    return { ...data, onboarding: null };
+  }
+  if (step === BOT_STEPS.NONE) {
+    throw new Error("Open the chat link again to start the assistant.");
+  }
+
+  const answers = parseBotAnswers(conversation.botAnswers);
+  let nextStep = step;
+  let guestLine = "";
+  let botLine = "";
+
+  if (step === BOT_STEPS.BUSINESS_TYPE) {
+    const choice = String(value || "").trim();
+    const prompt = getOnboardingPrompt(BOT_STEPS.BUSINESS_TYPE);
+    if (!prompt.options.some((o) => o.value === choice)) {
+      throw new Error("Pick one of the business type options.");
+    }
+    answers.businessType = choice;
+    guestLine = labelForOption(BOT_STEPS.BUSINESS_TYPE, choice);
+    botLine = "Got it. Next: how should your website be organized?";
+    nextStep = BOT_STEPS.LAYOUT;
+  } else if (step === BOT_STEPS.LAYOUT || step === BOT_STEPS.LAYOUT_HELP) {
+    const choice = String(value || "").trim();
+    if (choice === "explain" && step === BOT_STEPS.LAYOUT) {
+      guestLine = "I’m not sure — explain the difference";
+      botLine = getOnboardingPrompt(BOT_STEPS.LAYOUT_HELP).explanation;
+      nextStep = BOT_STEPS.LAYOUT_HELP;
+    } else if (choice === "one-page" || choice === "multi-page") {
+      answers.layout = choice;
+      guestLine = labelForOption(
+        step === BOT_STEPS.LAYOUT_HELP ? BOT_STEPS.LAYOUT_HELP : BOT_STEPS.LAYOUT,
+        choice,
+      );
+      botLine =
+        choice === "one-page"
+          ? "One page it is — everything scrolls on a single page."
+          : "Multiple pages it is — Home, About, and Contact as separate pages.";
+      nextStep = BOT_STEPS.PHONE;
+    } else {
+      throw new Error("Pick one page, multiple pages, or ask for an explanation.");
+    }
+  } else if (step === BOT_STEPS.PHONE) {
+    const choice = String(value || "").trim();
+    if (choice === "skip") {
+      answers.phone = "";
+      guestLine = "Skip for now";
+      botLine = "No problem — you can add a phone later in the editor.";
+      nextStep = BOT_STEPS.STYLE;
+    } else {
+      const phone = String(text || value || "").trim();
+      if (phone.length < 5) throw new Error("Enter a phone number or tap Skip.");
+      answers.phone = phone;
+      guestLine = phone;
+      botLine = "Saved. Last question — style preference.";
+      nextStep = BOT_STEPS.STYLE;
+    }
+  } else if (step === BOT_STEPS.STYLE) {
+    const choice = String(value || "").trim();
+    const prompt = getOnboardingPrompt(BOT_STEPS.STYLE);
+    if (!prompt.options.some((o) => o.value === choice)) {
+      throw new Error("Pick a style option.");
+    }
+    answers.style = choice;
+    guestLine = labelForOption(BOT_STEPS.STYLE, choice);
+    botLine = "Perfect — creating your sample draft now…";
+    nextStep = BOT_STEPS.DONE;
+  } else {
+    throw new Error("Unknown onboarding step.");
+  }
+
+  await addMessage({
+    conversationId: conversation.id,
+    sender: "guest",
+    body: guestLine,
+  });
+
+  if (botLine) {
+    await addMessage({
+      conversationId: conversation.id,
+      sender: "bot",
+      body: botLine,
+      system: true,
+    });
+  }
+
+  if (nextStep === BOT_STEPS.DONE) {
+    await query(
+      `UPDATE conversations SET bot_answers = $2::jsonb, updated_at = now() WHERE id = $1`,
+      [conversation.id, JSON.stringify(answers)],
+    );
+    const latest = await getConversationByToken(accessToken);
+    const finished = await finishBotOnboardingAndCreateDraft({
+      ...latest.conversation,
+      botAnswers: answers,
+      accessToken,
+    });
+    return { ...finished, onboarding: null };
+  }
+
+  await query(
+    `UPDATE conversations
+     SET bot_answers = $2::jsonb,
+         bot_step = $3,
+         updated_at = now()
+     WHERE id = $1`,
+    [conversation.id, JSON.stringify(answers), nextStep],
+  );
+
+  const refreshed = await getConversationByToken(accessToken);
+  return {
+    ...refreshed,
+    onboarding: getOnboardingPrompt(nextStep),
+  };
 }
 
 export async function markConversationRead(conversationId) {
@@ -351,6 +627,48 @@ export async function setSiteLayout(siteId, layout) {
     JSON.stringify(nextContent),
   ]);
   return getSiteById(id);
+}
+
+/**
+ * Guest self-serve sample site after email verify (chat token).
+ * Generates owner password, saves hash in DB, returns plaintext once.
+ */
+export async function createSampleSiteForGuest({
+  accessToken,
+  brandName,
+  layout = "multi-page",
+  phone = "",
+  address = "",
+}) {
+  const data = await getConversationByToken(accessToken);
+  if (!data) throw new Error("Conversation not found");
+
+  const { conversation } = data;
+  if (!conversation.emailVerified) {
+    throw new Error("Verify your email by opening the chat link from your inbox first.");
+  }
+  if (conversation.siteId) {
+    throw new Error("A sample site already exists for this chat.");
+  }
+  if (!conversation.email) {
+    throw new Error("This conversation has no email on file.");
+  }
+
+  const ownerPassword = generateOwnerPassword();
+  const draft = await createDraftFromConversation({
+    conversationId: conversation.id,
+    brandName: brandName || conversation.websiteName || conversation.name || "My Business",
+    ownerEmail: conversation.email,
+    ownerPassword,
+    phone: phone || conversation.phone || "",
+    address,
+    layout,
+  });
+
+  return {
+    ...draft,
+    conversationId: conversation.id,
+  };
 }
 
 export async function createDraftFromConversation({

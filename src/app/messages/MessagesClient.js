@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import MessageThread from "@/components/messaging/MessageThread";
 import MessageComposer from "@/components/messaging/MessageComposer";
+import ChatOnboarding from "@/components/messaging/ChatOnboarding";
 import BrandLogo from "@/components/BrandLogo";
 
 const GUEST_TOKEN_KEY = "tn_guest_chat_token";
@@ -13,6 +14,7 @@ export default function MessagesPage() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const [data, setData] = useState(null);
+  const [onboarding, setOnboarding] = useState(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -33,6 +35,7 @@ export default function MessagesPage() {
       return;
     }
     setData(json);
+    setOnboarding(json.onboarding || null);
   }, [token]);
 
   useEffect(() => {
@@ -50,6 +53,11 @@ export default function MessagesPage() {
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Failed to send");
     await load();
+  }
+
+  function handleOnboardingAnswer(result) {
+    setData(result);
+    setOnboarding(result.onboarding || null);
   }
 
   async function copyLink() {
@@ -83,6 +91,8 @@ export default function MessagesPage() {
     );
   }
 
+  const showOnboarding = Boolean(onboarding);
+
   return (
     <div className="flex min-h-screen flex-col bg-[#07122a] text-zinc-900">
       <header className="border-b border-white/10 bg-[#040b1a] px-4 py-4 text-white">
@@ -94,12 +104,22 @@ export default function MessagesPage() {
             </h1>
             <p className="mt-1 text-xs text-blue-100">
               {data.conversation.emailVerified ? "Email verified · " : ""}
-              {data.conversation.email
-                ? `Chat for ${data.conversation.email}. Bookmark this link or keep the email.`
-                : "Bookmark this page. When your draft is ready, login details appear here."}
+              {showOnboarding
+                ? "Answer the assistant questions below — then your sample draft is created."
+                : data.conversation.siteId
+                  ? "Your sample site login is in this chat. Bookmark this link."
+                  : "Bookmark this link or keep the email."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {data.conversation.siteId && (
+              <Link
+                href="/login"
+                className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2 text-sm font-semibold"
+              >
+                Login to edit site
+              </Link>
+            )}
             <button
               type="button"
               onClick={copyLink}
@@ -107,15 +127,19 @@ export default function MessagesPage() {
             >
               {copied ? "Link copied" : "Copy chat link"}
             </button>
-            <Link href="/login" className="rounded-full bg-white/10 px-4 py-2 text-sm hover:bg-white/15">
-              Owner login
-            </Link>
           </div>
         </div>
       </header>
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden bg-white shadow-2xl shadow-black/30 md:my-6 md:rounded-3xl md:border md:border-zinc-200">
         <MessageThread messages={data.messages} />
-        <MessageComposer onSend={send} />
+        {showOnboarding ? (
+          <ChatOnboarding prompt={onboarding} token={token} onAnswered={handleOnboardingAnswer} />
+        ) : (
+          <MessageComposer
+            onSend={send}
+            placeholder="Message us anytime about design or changes…"
+          />
+        )}
       </div>
     </div>
   );

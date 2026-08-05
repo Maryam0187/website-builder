@@ -4,6 +4,7 @@ import {
   listConversations,
   getConversationByToken,
   markConversationEmailVerified,
+  startChatBotOnboarding,
 } from "@/lib/store-actions";
 import { requireUser } from "@/lib/auth";
 import { sendChatLinkEmail } from "@/lib/mail";
@@ -16,8 +17,8 @@ export async function GET(request) {
     const data = await getConversationByToken(token);
     if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await markConversationEmailVerified(token);
-    const refreshed = await getConversationByToken(token);
-    return NextResponse.json(refreshed);
+    const withBot = await startChatBotOnboarding(token);
+    return NextResponse.json(withBot || (await getConversationByToken(token)));
   }
 
   const user = await requireUser(["admin"]);
@@ -32,14 +33,13 @@ export async function POST(request) {
   const name = String(body.name || "").trim();
   const email = String(body.email || "").toLowerCase().trim();
   const websiteName = String(body.websiteName || "").trim();
-  const message = String(body.message || "").trim();
-  const phone = String(body.phone || "").trim();
-  const businessType = String(body.businessType || "").trim();
-  const images = Array.isArray(body.images) ? body.images.slice(0, 8) : [];
+  const message =
+    String(body.message || "").trim() ||
+    `I'd like a sample website for ${websiteName || "my business"}.`;
 
-  if (!name || !email || !websiteName || !message) {
+  if (!name || !email || !websiteName) {
     return NextResponse.json(
-      { error: "Name, email, website name, and message are required" },
+      { error: "Name, email, and website name are required" },
       { status: 400 },
     );
   }
@@ -54,10 +54,10 @@ export async function POST(request) {
       name,
       email,
       websiteName,
-      phone,
-      businessType,
+      phone: "",
+      businessType: "",
       message,
-      images,
+      images: [],
     });
   } catch (error) {
     return NextResponse.json(
@@ -87,6 +87,7 @@ export async function POST(request) {
   }
 
   // Do not return accessToken — guest must open the emailed link to verify email.
+  // Draft is created when they open the chat (assistant onboarding).
   return NextResponse.json({
     conversationId: result.conversationId,
     email: result.email,

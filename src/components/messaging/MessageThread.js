@@ -14,20 +14,27 @@ export default function MessageThread({ messages = [], title }) {
         )}
         {messages.map((msg) => {
           const mine = msg.sender === "guest" || msg.sender === "owner";
+          const isBot = msg.sender === "bot";
+          const label = isBot
+            ? "assistant"
+            : msg.system
+              ? `${msg.sender} · invite`
+              : msg.sender;
           return (
             <div key={msg.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div
                 className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-                  msg.system
-                    ? "bg-amber-50 text-amber-950 ring-1 ring-amber-200"
-                    : mine
-                      ? "bg-[#0b3d91] text-white"
-                      : "bg-zinc-100 text-zinc-900"
+                  isBot
+                    ? "bg-cyan-50 text-cyan-950 ring-1 ring-cyan-200"
+                    : msg.system
+                      ? "bg-amber-50 text-amber-950 ring-1 ring-amber-200"
+                      : mine
+                        ? "bg-[#0b3d91] text-white"
+                        : "bg-zinc-100 text-zinc-900"
                 }`}
               >
                 <p className="mb-1 text-[11px] uppercase tracking-wide opacity-70">
-                  {msg.sender}
-                  {msg.system ? " · invite" : ""}
+                  {label}
                 </p>
                 {msg.body && <p className="whitespace-pre-wrap leading-6">{msg.body}</p>}
                 {msg.images?.length > 0 && (

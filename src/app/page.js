@@ -50,23 +50,23 @@ const ideas = [
 const steps = [
   {
     n: "01",
-    title: "Tell us about your business",
-    body: "Share your name, website name, email, and what you do. Optionally upload design screenshots from ChatGPT, Claude, Gemini, or any site you like.",
+    title: "Enter name, email & website name",
+    body: "Three fields only. We email you a private chat link.",
   },
   {
     n: "02",
-    title: "Open your private chat link",
-    body: "We email you a secure chat link. Opening it verifies your email and keeps your conversation in one place.",
+    title: "Open chat — tap answer options",
+    body: "Opening the link verifies your email. The assistant asks basic questions with choices (one page vs multiple pages, business type, and more).",
   },
   {
     n: "03",
-    title: "We send a first draft",
-    body: "Technonaire builds a polished starter site for you, then posts the preview and owner login in the same chat.",
+    title: "Sample draft is created",
+    body: "After your answers, we create a default-template draft, generate a temporary password, and post login details in the chat.",
   },
   {
     n: "04",
-    title: "You edit the easy parts",
-    body: "Log in and click any text, photo, or color to change it. Ask us in chat for layout or bigger design updates.",
+    title: "Edit — or ask for design changes",
+    body: "Log in, set your password, click to edit. Need a custom look? Message us in the same chat.",
   },
 ];
 
@@ -302,24 +302,24 @@ export default function HomePage() {
         <div className="home-reveal" data-reveal>
           <p className="text-xs font-bold tracking-[0.18em] text-cyan-200 uppercase">Start here</p>
           <h2 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-semibold md:text-4xl">
-            Message us about your business.
+            Start with a chat link.
           </h2>
           <p className="mt-4 text-base leading-7 text-blue-100">
-            Include your website name and email. We will send your private chat link to that inbox —
-            opening it verifies your email and opens the conversation.
+            Just your name, email, and website name. Open the chat — our assistant asks a few
+            questions, then creates your sample draft.
           </p>
           <ul className="mt-8 space-y-3 text-sm leading-6 text-blue-100">
             <li className="flex gap-3">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
-              Optional: attach screenshots of designs you like
+              Chat link by email first
             </li>
             <li className="flex gap-3">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
-              Keep the emailed link — it is how you return to chat
+              Assistant questions → then sample draft + login in chat
             </li>
             <li className="flex gap-3">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
-              Owner login arrives in the same chat after we send your draft
+              Message us anytime for custom design
             </li>
           </ul>
         </div>

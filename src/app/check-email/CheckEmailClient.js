@@ -27,7 +27,7 @@ export default function CheckEmailClient() {
           {existing ? (
             <>
               This email already has a chat. We sent your chat link again to{" "}
-              <strong className="text-white">{email}</strong> and added your new message there.
+              <strong className="text-white">{email}</strong>.
             </>
           ) : (
             <>
@@ -36,11 +36,12 @@ export default function CheckEmailClient() {
           )}
         </p>
         <p className="mt-3 text-sm leading-6 text-blue-100">
-          Open that link to verify your email and continue the conversation. Keep the email so you
-          can return to your chat anytime.
+          Open that link to verify your email. Our assistant will ask a few basic questions, then
+          create your sample website draft and share the login in the chat.
         </p>
         <ul className="mt-6 space-y-2 text-sm text-blue-100">
           <li>• Check spam / promotions if you do not see it</li>
+          <li>• Keep the email — it is how you return to chat</li>
         </ul>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link

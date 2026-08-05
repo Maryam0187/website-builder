@@ -47,14 +47,14 @@ export async function sendChatLinkEmail({ to, name, accessToken }) {
   const chatUrl = `${base}/messages?token=${encodeURIComponent(accessToken)}`;
   const logoUrl = `${base}/email-logo.png`;
   const siteUrl = AGENCY_URL();
-  const subject = "Your Technonaire chat link — open to continue";
+  const subject = "Your Easy Website chat link — open to continue";
   const greetingName = escapeHtml(name || "there");
 
   const text = [
     `Hi ${name || "there"},`,
     ``,
-    `Thanks for messaging Technonaire Easy Website.`,
-    `Open this private chat link to continue (and to verify your email):`,
+    `Thanks for starting with Easy Website.`,
+    `Open this private chat link to verify your email. Our assistant will ask a few questions, then create your sample draft:`,
     ``,
     chatUrl,
     ``,
@@ -89,7 +89,7 @@ export async function sendChatLinkEmail({ to, name, accessToken }) {
                 Hi ${greetingName},
               </p>
               <p style="margin:0 0 24px;font-size:16px;line-height:1.65;color:#33443d;">
-                Thanks for messaging us. Open the link below to continue your chat and verify your email.
+                Open the link below to verify your email. Our assistant will ask a few questions, then create your sample website draft in the chat.
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
                 <tr>
