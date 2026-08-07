@@ -1,5 +1,5 @@
 /** Shared Technonaire booking link (same across marketing, DineOS, Easy Website). */
-export const DEFAULT_CALENDLY_URL = "https://calendly.com/maryamshahid0187/30min";
+export const DEFAULT_CALENDLY_URL = "https://calendly.com/technonaire/30min";
 
 export const bookMeetingLabel = "Book a meeting";
 

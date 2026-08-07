@@ -5,11 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import LocalBusinessTemplate from "@/components/template/LocalBusinessTemplate";
 import EditPanel from "@/components/editor/EditPanel";
+import TemplateChangeDialog from "@/components/editor/TemplateChangeDialog";
 import MessageThread from "@/components/messaging/MessageThread";
 import MessageComposer from "@/components/messaging/MessageComposer";
 import BrandLogo from "@/components/BrandLogo";
 import { getNavItems, isOnePageLayout, resolvePageId } from "@/lib/site-defaults";
-import { listTemplates } from "@/lib/templates";
+import { getTemplate, listTemplates } from "@/lib/templates";
 
 function setPath(obj, path, value) {
   const clone = structuredClone(obj);
@@ -38,6 +39,7 @@ export default function EditPageClient() {
   const [pageId, setPageId] = useState("home");
   const [templates] = useState(() => listTemplates());
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [pendingTemplateId, setPendingTemplateId] = useState(null);
 
   const loadThread = useCallback(async (conversationId) => {
     if (!conversationId) return;
@@ -145,26 +147,33 @@ export default function EditPageClient() {
     router.push("/login");
   }
 
-  async function changeTemplate(templateId) {
-    if (!site || templateId === site.content?.template) return;
-    const ok = window.confirm(
-      "Switch template? This refreshes starter pages and colors for the new look. Your business name is kept. Continue?",
-    );
-    if (!ok) return;
+  function requestTemplateChange(templateId) {
+    if (!site || templateId === (site.content?.template || "other")) return;
+    setPendingTemplateId(templateId);
+  }
+
+  function cancelTemplateChange() {
+    if (templateBusy) return;
+    setPendingTemplateId(null);
+  }
+
+  async function confirmTemplateChange() {
+    if (!site || !pendingTemplateId) return;
     setTemplateBusy(true);
     setStatus("");
     try {
       const res = await fetch("/api/site/template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteId: site.id, template: templateId }),
+        body: JSON.stringify({ siteId: site.id, template: pendingTemplateId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to change template");
       setSite(data.site);
       setPageId("home");
       setDraft(null);
-      setStatus(`Template: ${data.site.content?.template || templateId}`);
+      setPendingTemplateId(null);
+      setStatus(`Template: ${getTemplate(data.site.content?.template || pendingTemplateId).label}`);
       setTimeout(() => setStatus(""), 2000);
     } catch (err) {
       setStatus(err.message || "Template change failed");
@@ -257,7 +266,7 @@ export default function EditPageClient() {
               disabled={templateBusy}
               className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none ring-cyan-400/30 focus:ring-2 disabled:opacity-60"
               value={site.content?.template || "other"}
-              onChange={(e) => changeTemplate(e.target.value)}
+              onChange={(e) => requestTemplateChange(e.target.value)}
             >
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -272,6 +281,15 @@ export default function EditPageClient() {
           )}
         </div>
       </div>
+
+      <TemplateChangeDialog
+        open={Boolean(pendingTemplateId)}
+        fromLabel={getTemplate(site.content?.template || "other").label}
+        toLabel={pendingTemplateId ? getTemplate(pendingTemplateId).label : ""}
+        busy={templateBusy}
+        onCancel={cancelTemplateChange}
+        onConfirm={confirmTemplateChange}
+      />
 
       <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-950">
         Tip: change words and photos yourself.{" "}
