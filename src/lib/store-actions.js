@@ -320,7 +320,8 @@ export async function addMessage({ conversationId, sender, body, images = [], sy
 async function finishBotOnboardingAndCreateDraft(conversation) {
   const siteName = conversation.websiteName || "your business";
   const answers = parseBotAnswers(conversation.botAnswers);
-  const layout = answers.layout === "multi-page" ? "multi-page" : "one-page";
+  // Local + niche templates are one-page by default (extra sections stay in the navbar)
+  const layout = "one-page";
   const businessType = answers.businessType || conversation.businessType || "";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
@@ -362,7 +363,7 @@ async function finishBotOnboardingAndCreateDraft(conversation) {
     const layoutLabel = layout === "one-page" ? "one-page (scroll)" : "multi-page";
     const commerceNote = getTemplate(template).commerce
       ? `Cart/checkout buttons invite customers to contact you — message us if you want full online ordering.`
-      : `Change text and photos yourself. Message us here if you want a custom design or more pages.`;
+      : `Change text and photos yourself. Message us here if you want a custom design or another menu section.`;
     await addMessage({
       conversationId: conversation.id,
       sender: "bot",
@@ -474,9 +475,11 @@ export async function answerChatBotOnboarding(accessToken, { value, text } = {})
       throw new Error("Pick one of the business type options.");
     }
     answers.businessType = choice;
+    answers.layout = "one-page";
     guestLine = labelForOption(BOT_STEPS.BUSINESS_TYPE, choice);
-    botLine = "Got it. Next: how should your website be organized?";
-    nextStep = BOT_STEPS.LAYOUT;
+    botLine =
+      "Got it. Your site will be one scrolling page (Home, About, and more in the menu). Need another section later? Message us and we’ll add it to your navbar. Next: style preference.";
+    nextStep = BOT_STEPS.STYLE;
   } else if (step === BOT_STEPS.LAYOUT || step === BOT_STEPS.LAYOUT_HELP) {
     const choice = String(value || "").trim();
     if (choice === "explain" && step === BOT_STEPS.LAYOUT) {

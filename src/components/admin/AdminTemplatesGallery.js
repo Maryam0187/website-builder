@@ -9,8 +9,8 @@ export default function AdminTemplatesGallery() {
       <div className="border-b border-white/10 px-6 py-4">
         <h2 className="font-semibold">All templates</h2>
         <p className="mt-1 text-xs text-blue-200/80">
-          Open any template to preview the live sample. Assigned from business type at draft
-          creation; clients can also switch in the editor.
+          One-page previews by default. Assigned from business type at draft creation; clients can
+          switch templates in the editor. Extra sections are added from the sites list (navbar).
         </p>
       </div>
       <div className="grid gap-4 p-6 sm:grid-cols-2 lg:grid-cols-3">

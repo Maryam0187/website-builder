@@ -492,8 +492,10 @@ export function addPageToContent(content, { type, label, pageId: requestedId } =
 
   next.pages[pageId] = createPageByType(pageType, { label: navLabel, title: navLabel });
   next.nav = [...(next.nav || []), { label: navLabel, pageId }];
-  // Extra pages mean separate routes — switch off one-page scroll mode
-  next.layout = "multi-page";
+  // Local + niche sites stay one-page: new pages are scroll sections in the navbar
+  if (next.layout !== "multi-page") {
+    next.layout = "one-page";
+  }
   return next;
 }
 

@@ -62,7 +62,8 @@ export async function POST(request) {
   const ownerPassword = String(body.ownerPassword || "").trim();
   const phone = String(body.phone || "").trim();
   const address = String(body.address || "").trim();
-  const layout = body.layout === "multi-page" ? "multi-page" : "one-page";
+  // Local + niche drafts are one-page; admin can still switch layout later if needed
+  const layout = "one-page";
   const template = body.template ? String(body.template).trim() : undefined;
   const businessType = body.businessType ? String(body.businessType).trim() : undefined;
 
@@ -87,10 +88,6 @@ export async function POST(request) {
     });
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const layoutNote =
-      layout === "one-page"
-        ? `Your site is one page — Home, About, and Contact scroll together. Use the menu to jump to a section.`
-        : `Your site has separate pages: Home, About, and Contact. Use the menu to switch pages.`;
     const inviteBody = [
       `Your first draft is ready.`,
       ``,
@@ -104,8 +101,8 @@ export async function POST(request) {
       `• Preview: ${appUrl}/site/${draft.slug}`,
       `• Edit: ${appUrl}/edit`,
       ``,
-      layoutNote,
-      `Change text and photos yourself. Message us here if you want more pages or design/UI changes.`,
+      `Your site is one page — Home, About, and other sections scroll together. The menu jumps to each section.`,
+      `Change text and photos yourself. Message us here if you want another navbar section or design/UI changes.`,
     ].join("\n");
 
     await addMessage({

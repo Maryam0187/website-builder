@@ -73,7 +73,7 @@ export default function AdminInboxPage() {
     const res = await fetch("/api/site", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId: activeId, ...draftForm }),
+      body: JSON.stringify({ conversationId: activeId, ...draftForm, layout: "one-page" }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -184,7 +184,7 @@ export default function AdminInboxPage() {
                     href="/admin"
                     className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                   >
-                    Add page on dashboard
+                    Add section on dashboard
                   </Link>
                 </div>
               )}
@@ -212,44 +212,9 @@ export default function AdminInboxPage() {
               Create first draft
             </h3>
             <p className="text-sm leading-6 text-zinc-500">
-              Ask the client: everything on one page, or separate About / Contact pages? Then create
-              the draft and send login credentials in this chat.
+              Creates a one-page draft (sections in the navbar). Extra sections can be added later
+              from the admin dashboard. Login credentials are posted in this chat.
             </p>
-            <div>
-              <p className="mb-2 text-sm font-medium text-zinc-800">Site layout</p>
-              <div className="grid gap-2">
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 px-3 py-3 hover:bg-zinc-50">
-                  <input
-                    type="radio"
-                    name="layout"
-                    className="mt-1"
-                    checked={draftForm.layout === "one-page"}
-                    onChange={() => setDraftForm((prev) => ({ ...prev, layout: "one-page" }))}
-                  />
-                  <span>
-                    <span className="block text-sm font-semibold text-zinc-900">One page</span>
-                    <span className="text-xs leading-5 text-zinc-500">
-                      Home, About, and Contact scroll on a single page (menu jumps to sections).
-                    </span>
-                  </span>
-                </label>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 px-3 py-3 hover:bg-zinc-50">
-                  <input
-                    type="radio"
-                    name="layout"
-                    className="mt-1"
-                    checked={draftForm.layout === "multi-page"}
-                    onChange={() => setDraftForm((prev) => ({ ...prev, layout: "multi-page" }))}
-                  />
-                  <span>
-                    <span className="block text-sm font-semibold text-zinc-900">Multiple pages</span>
-                    <span className="text-xs leading-5 text-zinc-500">
-                      Separate Home, About, and Contact pages. Add more later if they ask.
-                    </span>
-                  </span>
-                </label>
-              </div>
-            </div>
             {[
               ["brandName", "Business name"],
               ["ownerEmail", "Owner email (login)"],

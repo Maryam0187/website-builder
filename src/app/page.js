@@ -56,17 +56,17 @@ const steps = [
   {
     n: "02",
     title: "Open chat — tap answer options",
-    body: "Opening the link verifies your email. The assistant asks basic questions with choices (one page vs multiple pages, business type, and more).",
+    body: "Opening the link verifies your email. The assistant asks your business type and style — sites start as one scrolling page.",
   },
   {
     n: "03",
     title: "Sample draft is created",
-    body: "After your answers, we create a default-template draft, generate a temporary password, and post login details in the chat.",
+    body: "After your answers, we create a one-page template draft, generate a temporary password, and post login details in the chat.",
   },
   {
     n: "04",
     title: "Edit — or ask for design changes",
-    body: "Log in, set your password, click to edit. Need a custom look? Message us in the same chat.",
+    body: "Log in, set your password, click to edit. Need another menu section? Message us and we’ll add it to your navbar.",
   },
 ];
 

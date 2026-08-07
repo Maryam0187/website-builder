@@ -6,7 +6,7 @@ export async function POST(request) {
   const accessToken = String(body.token || "").trim();
   const brandName = String(body.brandName || "").trim();
   const address = String(body.address || "").trim();
-  const layout = body.layout === "multi-page" ? "multi-page" : "one-page";
+  const layout = "one-page";
 
   if (!accessToken) {
     return NextResponse.json({ error: "Chat token is required" }, { status: 400 });
@@ -24,11 +24,6 @@ export async function POST(request) {
     });
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const layoutNote =
-      layout === "one-page"
-        ? `Your sample site is one page — Home, About, and Contact scroll together.`
-        : `Your sample site has separate pages: Home, About, and Contact.`;
-
     await addMessage({
       conversationId: draft.conversationId,
       sender: "admin",
@@ -44,8 +39,8 @@ export async function POST(request) {
         `Preview: ${appUrl}/site/${draft.slug}`,
         `Edit: ${appUrl}/edit`,
         ``,
-        layoutNote,
-        `Change text and photos yourself. Message us here if you want a custom design or more pages.`,
+        `Your sample site is one page — sections scroll together and show in the menu.`,
+        `Change text and photos yourself. Message us here if you want a custom design or another navbar section.`,
       ].join("\n"),
       system: true,
     });

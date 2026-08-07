@@ -47,7 +47,10 @@ export default function AdminAddPageForm({ siteId, siteSlug, existingPageIds = [
 
   return (
     <form onSubmit={submit} className="mt-3 space-y-2 rounded-2xl border border-white/10 bg-black/20 p-3">
-      <p className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">Add page</p>
+      <p className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">Add section</p>
+      <p className="text-[11px] leading-4 text-blue-100/80">
+        Adds a navbar item on the one-page site (scroll section). Does not switch to multi-page.
+      </p>
       <div className="flex flex-wrap gap-2">
         <select
           className="rounded-lg border border-white/15 bg-[#0b1528] px-3 py-2 text-sm text-white"
@@ -72,7 +75,7 @@ export default function AdminAddPageForm({ siteId, siteSlug, existingPageIds = [
           disabled={busy}
           className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2 text-sm font-semibold disabled:opacity-60"
         >
-          {busy ? "Adding…" : "Add"}
+          {busy ? "Adding…" : "Add to navbar"}
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs text-blue-100">

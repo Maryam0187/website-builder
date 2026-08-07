@@ -35,10 +35,11 @@ export function getOnboardingPrompt(step) {
         ],
       };
     case BOT_STEPS.LAYOUT:
+      // Kept for in-progress chats; new chats skip this and default to one-page.
       return {
         step,
         title: "How should your website be organized?",
-        hint: "We recommend one page (default). You can ask us to switch later.",
+        hint: "One page is the default. Extra sections can be added to your navbar later.",
         input: "choices",
         options: [
           {
@@ -49,7 +50,7 @@ export function getOnboardingPrompt(step) {
           {
             value: "multi-page",
             label: "Multiple pages",
-            description: "Separate Home, About, and Contact pages. Menu opens each page.",
+            description: "Separate pages. Only use if you already started this step.",
           },
           {
             value: "explain",

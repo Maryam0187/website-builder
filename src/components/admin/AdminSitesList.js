@@ -185,7 +185,7 @@ export default function AdminSitesList({ initialSites = [] }) {
                     onClick={() => setOpenId((id) => (id === site.id ? null : site.id))}
                     className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/15"
                   >
-                    {openId === site.id ? "Close" : "Add page"}
+                    {openId === site.id ? "Close" : "Add section"}
                   </button>
                   <button
                     type="button"

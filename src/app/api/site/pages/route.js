@@ -30,20 +30,26 @@ export async function POST(request) {
 
     if (notify && site.conversationId && added) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-      const previewPath =
-        added.pageId === "home"
+      const onePage = site.content?.layout !== "multi-page";
+      const previewPath = onePage
+        ? `${appUrl}/site/${site.slug}#${added.pageId}`
+        : added.pageId === "home"
           ? `${appUrl}/site/${site.slug}`
           : `${appUrl}/site/${site.slug}/${added.pageId}`;
       await addMessage({
         conversationId: site.conversationId,
         sender: "admin",
         body: [
-          `We added a new page: ${added.label}.`,
+          onePage
+            ? `We added a new section to your site menu: ${added.label}.`
+            : `We added a new page: ${added.label}.`,
           ``,
           `Preview: ${previewPath}`,
           `Edit: ${appUrl}/edit?page=${added.pageId}`,
           ``,
-          `You can update the text and photos yourself. Message us if you want more pages or layout changes.`,
+          onePage
+            ? `It appears in your navbar and scrolls on the same page. Update the text and photos yourself — message us if you want another section.`
+            : `You can update the text and photos yourself. Message us if you want more pages or layout changes.`,
         ].join("\n"),
         system: true,
       });
