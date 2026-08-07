@@ -31,13 +31,13 @@ export function getOnboardingPrompt(step) {
       return {
         step,
         title: "How should your website be organized?",
-        hint: "This sets up your sample draft. You can ask us to switch later.",
+        hint: "We recommend one page (default). You can ask us to switch later.",
         input: "choices",
         options: [
           {
             value: "one-page",
-            label: "One page",
-            description: "Home, About, and Contact on one scrolling page. Menu jumps to sections.",
+            label: "One page (recommended)",
+            description: "Full-screen photo sections that scroll together. Simple and stylish.",
           },
           {
             value: "multi-page",
@@ -86,7 +86,7 @@ export function getOnboardingPrompt(step) {
       return {
         step,
         title: "What style feels closest?",
-        hint: "We’ll start from our default template; this helps us if you ask for design changes.",
+        hint: "Your business type already picks a template. Style is a preference note for later design tweaks.",
         input: "choices",
         options: [
           { value: "warm", label: "Warm & classic" },

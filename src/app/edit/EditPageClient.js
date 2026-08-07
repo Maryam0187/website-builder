@@ -9,6 +9,7 @@ import MessageThread from "@/components/messaging/MessageThread";
 import MessageComposer from "@/components/messaging/MessageComposer";
 import BrandLogo from "@/components/BrandLogo";
 import { getNavItems, isOnePageLayout, resolvePageId } from "@/lib/site-defaults";
+import { listTemplates } from "@/lib/templates";
 
 function setPath(obj, path, value) {
   const clone = structuredClone(obj);
@@ -35,6 +36,8 @@ export default function EditPageClient() {
   const [thread, setThread] = useState(null);
   const [status, setStatus] = useState("");
   const [pageId, setPageId] = useState("home");
+  const [templates] = useState(() => listTemplates());
+  const [templateBusy, setTemplateBusy] = useState(false);
 
   const loadThread = useCallback(async (conversationId) => {
     if (!conversationId) return;
@@ -142,6 +145,34 @@ export default function EditPageClient() {
     router.push("/login");
   }
 
+  async function changeTemplate(templateId) {
+    if (!site || templateId === site.content?.template) return;
+    const ok = window.confirm(
+      "Switch template? This refreshes starter pages and colors for the new look. Your business name is kept. Continue?",
+    );
+    if (!ok) return;
+    setTemplateBusy(true);
+    setStatus("");
+    try {
+      const res = await fetch("/api/site/template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteId: site.id, template: templateId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to change template");
+      setSite(data.site);
+      setPageId("home");
+      setDraft(null);
+      setStatus(`Template: ${data.site.content?.template || templateId}`);
+      setTimeout(() => setStatus(""), 2000);
+    } catch (err) {
+      setStatus(err.message || "Template change failed");
+    } finally {
+      setTemplateBusy(false);
+    }
+  }
+
   if (!site) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#070f1f] text-blue-100">
@@ -220,8 +251,24 @@ export default function EditPageClient() {
               {item.label}
             </button>
           ))}
+          <label className="ml-auto flex items-center gap-2 text-xs text-zinc-600">
+            <span className="font-semibold tracking-wide uppercase">Template</span>
+            <select
+              disabled={templateBusy}
+              className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none ring-cyan-400/30 focus:ring-2 disabled:opacity-60"
+              value={site.content?.template || "other"}
+              onChange={(e) => changeTemplate(e.target.value)}
+            >
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                  {t.commerce ? " (cart via contact)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
           {onePage && (
-            <span className="ml-auto text-xs text-zinc-500">One-page site · menu jumps to sections</span>
+            <span className="text-xs text-zinc-500">One-page · menu jumps to sections</span>
           )}
         </div>
       </div>

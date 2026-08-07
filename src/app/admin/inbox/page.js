@@ -19,7 +19,7 @@ export default function AdminInboxPage() {
     ownerPassword: "",
     phone: "",
     address: "",
-    layout: "multi-page",
+    layout: "one-page",
   });
   const [status, setStatus] = useState("");
 
@@ -110,7 +110,7 @@ export default function AdminInboxPage() {
                     ownerPassword: "",
                     phone: c.phone || "",
                     address: "",
-                    layout: "multi-page",
+                    layout: "one-page",
                   });
                 }}
                 className={`w-full border-b border-white/5 px-5 py-4 text-left transition hover:bg-white/5 ${

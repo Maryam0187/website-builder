@@ -7,7 +7,7 @@ export async function POST(request) {
   const brandName = String(body.brandName || "").trim();
   const phone = String(body.phone || "").trim();
   const address = String(body.address || "").trim();
-  const layout = body.layout === "one-page" ? "one-page" : "multi-page";
+  const layout = body.layout === "multi-page" ? "multi-page" : "one-page";
 
   if (!accessToken) {
     return NextResponse.json({ error: "Chat token is required" }, { status: 400 });

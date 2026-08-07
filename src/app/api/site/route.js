@@ -62,7 +62,9 @@ export async function POST(request) {
   const ownerPassword = String(body.ownerPassword || "").trim();
   const phone = String(body.phone || "").trim();
   const address = String(body.address || "").trim();
-  const layout = body.layout === "one-page" ? "one-page" : "multi-page";
+  const layout = body.layout === "multi-page" ? "multi-page" : "one-page";
+  const template = body.template ? String(body.template).trim() : undefined;
+  const businessType = body.businessType ? String(body.businessType).trim() : undefined;
 
   if (!conversationId || !brandName || !ownerEmail || !ownerPassword) {
     return NextResponse.json(
@@ -80,6 +82,8 @@ export async function POST(request) {
       phone,
       address,
       layout,
+      template,
+      businessType,
     });
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";

@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { query, token, toInt, withTransaction } from "./db";
 import {
   addPageToContent,
+  applyTemplateToContent,
   createDefaultSiteContent,
   normalizeSiteContent,
   setLayoutOnContent,
@@ -9,6 +10,7 @@ import {
 } from "./site-defaults";
 import { hashPassword } from "./auth";
 import { BOT_STEPS, getOnboardingPrompt, labelForOption } from "./chat-onboarding";
+import { getTemplate, resolveTemplateId } from "./templates";
 
 /** Temporary owner password — hashed in DB; plaintext returned once for chat/login. */
 export function generateOwnerPassword() {
@@ -318,7 +320,7 @@ export async function addMessage({ conversationId, sender, body, images = [], sy
 async function finishBotOnboardingAndCreateDraft(conversation) {
   const siteName = conversation.websiteName || "your business";
   const answers = parseBotAnswers(conversation.botAnswers);
-  const layout = answers.layout === "one-page" ? "one-page" : "multi-page";
+  const layout = answers.layout === "multi-page" ? "multi-page" : "one-page";
   const phone = answers.phone || conversation.phone || "";
   const businessType = answers.businessType || conversation.businessType || "";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -345,6 +347,8 @@ async function finishBotOnboardingAndCreateDraft(conversation) {
   }
 
   try {
+    const template = resolveTemplateId(businessType || answers.businessType || "other");
+    const templateLabel = getTemplate(template).label;
     const ownerPassword = generateOwnerPassword();
     const draft = await createDraftFromConversation({
       conversationId: conversation.id,
@@ -354,14 +358,20 @@ async function finishBotOnboardingAndCreateDraft(conversation) {
       phone,
       address: "",
       layout,
+      template,
+      businessType,
     });
 
     const layoutLabel = layout === "one-page" ? "one-page (scroll)" : "multi-page";
+    const commerceNote = getTemplate(template).commerce
+      ? `Cart/checkout buttons invite customers to contact you — message us if you want full online ordering.`
+      : `Change text and photos yourself. Message us here if you want a custom design or more pages.`;
     await addMessage({
       conversationId: conversation.id,
       sender: "bot",
       body: [
-        `Thanks! I’ve created your sample website draft for “${siteName}” (${layoutLabel}).`,
+        `Thanks! I’ve created your sample website draft for “${siteName}”.`,
+        `Template: ${templateLabel} · Layout: ${layoutLabel}`,
         ``,
         `Login: ${appUrl}/login`,
         `Email: ${draft.ownerEmail}`,
@@ -372,7 +382,8 @@ async function finishBotOnboardingAndCreateDraft(conversation) {
         `Preview: ${appUrl}/site/${draft.slug}`,
         `Edit: ${appUrl}/edit`,
         ``,
-        `Change text and photos yourself. Message us here if you want a custom design or more pages.`,
+        `You can switch templates anytime in the editor.`,
+        commerceNote,
       ].join("\n"),
       system: true,
     });
@@ -608,6 +619,22 @@ export async function addSitePage(siteId, { type, label, pageId } = {}) {
   return getSiteById(id);
 }
 
+export async function setSiteTemplate(siteId, templateId) {
+  const id = toInt(siteId);
+  if (id == null) throw new Error("Site not found");
+
+  const site = await getSiteById(id);
+  if (!site) throw new Error("Site not found");
+
+  const nextId = resolveTemplateId(templateId);
+  const nextContent = applyTemplateToContent(site.content, nextId);
+  await query(`UPDATE sites SET content = $2::jsonb, updated_at = now() WHERE id = $1`, [
+    id,
+    JSON.stringify(nextContent),
+  ]);
+  return getSiteById(id);
+}
+
 export async function setSiteLayout(siteId, layout) {
   const id = toInt(siteId);
   if (id == null) throw new Error("Site not found");
@@ -636,7 +663,7 @@ export async function setSiteLayout(siteId, layout) {
 export async function createSampleSiteForGuest({
   accessToken,
   brandName,
-  layout = "multi-page",
+  layout = "one-page",
   phone = "",
   address = "",
 }) {
@@ -678,7 +705,9 @@ export async function createDraftFromConversation({
   ownerPassword,
   phone,
   address,
-  layout = "multi-page",
+  layout = "one-page",
+  template,
+  businessType,
   contentOverrides,
 }) {
   const convId = toInt(conversationId);
@@ -701,16 +730,22 @@ export async function createDraftFromConversation({
     slug = `${baseSlug}-${i++}`;
   }
 
-  const resolvedLayout = layout === "one-page" ? "one-page" : "multi-page";
+  const resolvedLayout = layout === "multi-page" ? "multi-page" : "one-page";
+  const resolvedTemplate = resolveTemplateId(
+    template || businessType || conversation.businessType || "other",
+  );
   const content = normalizeSiteContent({
     ...createDefaultSiteContent({
       brandName: brandName || conversation.name || "Your Business",
       phone: phone || conversation.phone || "",
       address: address || "",
       layout: resolvedLayout,
+      template: resolvedTemplate,
+      businessType: businessType || conversation.businessType,
     }),
     ...(contentOverrides || {}),
     layout: resolvedLayout,
+    template: resolvedTemplate,
   });
 
   const passwordHash = await hashPassword(ownerPassword);

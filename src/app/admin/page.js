@@ -4,6 +4,8 @@ import { requireUser, destroySession } from "@/lib/auth";
 import { listConversations, listSites } from "@/lib/store-actions";
 import BrandLogo from "@/components/BrandLogo";
 import AdminSitesList from "@/components/admin/AdminSitesList";
+import AdminTemplatesGallery from "@/components/admin/AdminTemplatesGallery";
+import { listTemplates } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,7 @@ export default async function AdminHomePage() {
 
   const [conversations, sites] = await Promise.all([listConversations(), listSites()]);
   const unread = conversations.reduce((sum, c) => sum + (c.unreadForAdmin || 0), 0);
+  const templateCount = listTemplates().length;
 
   return (
     <div className="min-h-screen bg-[#070f1f] text-white">
@@ -80,12 +83,17 @@ export default async function AdminHomePage() {
             <p className="mt-2 text-sm text-blue-100">Drafts created</p>
           </div>
           <div className="rounded-3xl border border-cyan-300/20 bg-gradient-to-br from-cyan-500/15 to-blue-600/10 p-6">
-            <p className="text-sm text-cyan-100">Workflow</p>
-            <p className="mt-3 text-lg font-semibold leading-7">
-              Reply → draft → invite. Add pages when clients ask.
+            <p className="text-sm text-cyan-100">Templates</p>
+            <p className="mt-3 font-[family-name:var(--font-display)] text-4xl font-semibold">
+              {templateCount}
+            </p>
+            <p className="mt-2 text-sm text-cyan-100">
+              Bakery, clinic, restaurant, shop, services, other
             </p>
           </div>
         </section>
+
+        <AdminTemplatesGallery />
 
         <section className="grid gap-6 lg:grid-cols-2">
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
@@ -126,7 +134,9 @@ export default async function AdminHomePage() {
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
             <div className="border-b border-white/10 px-6 py-4">
               <h2 className="font-semibold">Recent sites</h2>
-              <p className="mt-1 text-xs text-blue-200/80">Default pages: Home, About, Contact. Add more when requested.</p>
+              <p className="mt-1 text-xs text-blue-200/80">
+                Template shown per site — change it from the dropdown. Layout and pages below.
+              </p>
             </div>
             <AdminSitesList initialSites={sites} />
           </div>

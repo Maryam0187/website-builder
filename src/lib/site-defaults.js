@@ -1,3 +1,5 @@
+import { getTemplate, resolveTemplateId } from "./templates";
+
 export function slugify(text) {
   return String(text || "site")
     .toLowerCase()
@@ -17,37 +19,119 @@ const DEFAULT_THEME = {
 /** Page types admin can add when a client requests them. */
 export const ADDABLE_PAGE_TYPES = [
   { type: "services", label: "Services", defaultTitle: "What we offer" },
+  { type: "menu", label: "Menu / products", defaultTitle: "Menu" },
   { type: "gallery", label: "Gallery", defaultTitle: "Gallery" },
   { type: "faq", label: "FAQ", defaultTitle: "Frequently asked questions" },
   { type: "pricing", label: "Pricing", defaultTitle: "Pricing" },
   { type: "content", label: "Custom page", defaultTitle: "New page" },
 ];
 
-function createHomePage(brandName) {
+function createHomePage(brandName, templateDef) {
+  const hero = templateDef?.hero;
   return {
     type: "home",
     hero: {
-      headline: `${brandName} — crafted for your neighborhood`,
-      subheadline:
-        "A warm, simple place online where customers learn what you offer and how to reach you.",
-      cta: "Contact us",
+      headline: hero ? hero.headline(brandName) : brandName,
+      subheadline: hero
+        ? hero.subheadline
+        : "A simple, beautiful place online where customers learn what you offer and how to reach you.",
+      cta: hero?.cta || "Contact us",
       image:
-        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1600&q=80",
+        hero?.image ||
+        "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=2000&q=85",
     },
   };
 }
 
-function createAboutPage(brandName) {
+function createAboutPage(brandName, templateDef) {
   return {
     type: "about",
     title: `About ${brandName}`,
-    body: "Tell your story here. Share what makes your business special, how long you have served customers, and why people trust you.",
+    body: templateDef
+      ? templateDef.aboutBody(brandName)
+      : "Tell your story here. Share what makes your business special, how long you have served customers, and why people trust you.",
     image:
-      "https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&w=1200&q=80",
+      templateDef?.aboutImage ||
+      "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=2000&q=85",
   };
 }
 
-function createContactPage({ phone = "", address = "" } = {}) {
+function createMenuPage(templateDef) {
+  const fallbackImage =
+    "https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=1200&q=85";
+  const items = (templateDef?.menuItems || []).map((item) => ({
+    title: item.name,
+    description: [item.note, item.price].filter(Boolean).join(" · ") || "Add details",
+    price: item.price || "",
+    image: item.image || fallbackImage,
+  }));
+  return {
+    type: "menu",
+    title: templateDef?.menuLabel || "Menu",
+    commerce: Boolean(templateDef?.commerce),
+    contactNote:
+      "Full cart and checkout are not included on the sample site. Contact us to enable online ordering.",
+    items:
+      items.length > 0
+        ? items
+        : [
+            {
+              title: "Item one",
+              description: "Describe this item",
+              price: "",
+              image: fallbackImage,
+            },
+          ],
+  };
+}
+
+function createGalleryPage(templateDefOrTitle = "Gallery") {
+  if (typeof templateDefOrTitle === "string") {
+    return {
+      type: "gallery",
+      title: templateDefOrTitle,
+      items: [
+        {
+          image:
+            "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=85",
+          caption: "Photo one",
+        },
+        {
+          image:
+            "https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&w=1200&q=85",
+          caption: "Photo two",
+        },
+        {
+          image:
+            "https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=1200&q=85",
+          caption: "Photo three",
+        },
+      ],
+    };
+  }
+
+  const templateDef = templateDefOrTitle || {};
+  const items = (templateDef.galleryImages || []).map((item) => ({
+    caption: item.caption || "",
+    image: item.image,
+  }));
+  return {
+    type: "gallery",
+    title: templateDef.galleryLabel || "Gallery",
+    items:
+      items.length > 0
+        ? items
+        : [
+            {
+              caption: "Add a photo",
+              image:
+                "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1200&q=85",
+            },
+          ],
+  };
+}
+
+function createContactPage({ phone = "", address = "", image } = {}) {
   return {
     type: "contact",
     title: "Visit or call",
@@ -55,6 +139,9 @@ function createContactPage({ phone = "", address = "" } = {}) {
     address,
     hours: "Mon–Sat · 9am–7pm",
     email: "",
+    image:
+      image ||
+      "https://images.unsplash.com/photo-1423666639041-f56000c27a9a?auto=format&fit=crop&w=2000&q=85",
   };
 }
 
@@ -80,30 +167,6 @@ function createServicesPage(title = "What we offer") {
         description: "Keep it clear so visitors know how you can help.",
         image:
           "https://images.unsplash.com/photo-1556745757-8d76bdb6984b?auto=format&fit=crop&w=800&q=80",
-      },
-    ],
-  };
-}
-
-function createGalleryPage(title = "Gallery") {
-  return {
-    type: "gallery",
-    title,
-    items: [
-      {
-        image:
-          "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80",
-        caption: "Photo one",
-      },
-      {
-        image:
-          "https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&w=800&q=80",
-        caption: "Photo two",
-      },
-      {
-        image:
-          "https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=800&q=80",
-        caption: "Photo three",
       },
     ],
   };
@@ -171,6 +234,8 @@ export function createPageByType(type, { label, title } = {}) {
   switch (type) {
     case "services":
       return createServicesPage(pageTitle);
+    case "menu":
+      return createMenuPage({ menuLabel: pageTitle, menuItems: [], commerce: true });
     case "gallery":
       return createGalleryPage(pageTitle);
     case "faq":
@@ -191,35 +256,87 @@ export function createPageByType(type, { label, title } = {}) {
 
 export function createDefaultSiteContent({
   brandName = "Your Business",
-  tagline = "Welcome — we are glad you are here",
+  tagline,
   phone = "",
   address = "",
-  layout = "multi-page",
+  layout = "one-page",
+  template = "other",
+  businessType,
 } = {}) {
-  const resolvedLayout = layout === "one-page" ? "one-page" : "multi-page";
+  const templateId = resolveTemplateId(template || businessType || "other");
+  const templateDef = getTemplate(templateId);
+  // Default is one-page (single scroll); only multi-page when explicitly requested
+  const resolvedLayout = layout === "multi-page" ? "multi-page" : "one-page";
+  const menuPage = createMenuPage(templateDef);
+  const galleryPage = createGalleryPage(templateDef);
+
   return {
     layout: resolvedLayout,
+    template: templateId,
     brand: {
       name: brandName,
-      tagline,
+      tagline: tagline || templateDef.tagline,
     },
-    theme: { ...DEFAULT_THEME },
+    theme: { ...DEFAULT_THEME, ...templateDef.theme },
     features: {
       pwa: false,
       notifications: false,
+      commerce: Boolean(templateDef.commerce),
     },
     styles: {},
     nav: [
       { label: "Home", pageId: "home" },
       { label: "About", pageId: "about" },
+      { label: galleryPage.title, pageId: "gallery" },
+      { label: menuPage.title, pageId: "menu" },
       { label: "Contact", pageId: "contact" },
     ],
     pages: {
-      home: createHomePage(brandName),
-      about: createAboutPage(brandName),
-      contact: createContactPage({ phone, address }),
+      home: createHomePage(brandName, templateDef),
+      about: createAboutPage(brandName, templateDef),
+      gallery: galleryPage,
+      menu: menuPage,
+      contact: createContactPage({
+        phone,
+        address,
+        image: templateDef.contactImage,
+      }),
     },
   };
+}
+
+/** Switch template; keep brand name, layout, phone/contact where possible. */
+export function applyTemplateToContent(content, templateId) {
+  const normalized = normalizeSiteContent(content);
+  const nextId = resolveTemplateId(templateId);
+  const templateDef = getTemplate(nextId);
+  const brandName = normalized.brand?.name || "Your Business";
+  const phone = normalized.pages?.contact?.phone || "";
+  const address = normalized.pages?.contact?.address || "";
+  const layout = normalized.layout === "multi-page" ? "multi-page" : "one-page";
+
+  const fresh = createDefaultSiteContent({
+    brandName,
+    phone,
+    address,
+    layout,
+    template: nextId,
+  });
+
+  // Preserve owner edits on brand name; refresh theme + starter pages for new look
+  return normalizeSiteContent({
+    ...fresh,
+    brand: {
+      ...fresh.brand,
+      name: brandName,
+      tagline: normalized.brand?.tagline || fresh.brand.tagline,
+    },
+    styles: normalized.styles || {},
+    features: {
+      ...fresh.features,
+      commerce: Boolean(templateDef.commerce),
+    },
+  });
 }
 
 /**
@@ -239,13 +356,20 @@ export function normalizeSiteContent(content) {
             label: pageId.charAt(0).toUpperCase() + pageId.slice(1),
             pageId,
           }));
+    const template = resolveTemplateId(content.template || "other");
     return {
       ...content,
-      layout: content.layout === "one-page" ? "one-page" : "multi-page",
+      template,
+      layout: content.layout === "multi-page" ? "multi-page" : "one-page",
       nav,
       styles: content.styles || {},
       theme: { ...DEFAULT_THEME, ...(content.theme || {}) },
-      features: content.features || { pwa: false, notifications: false },
+      features: {
+        pwa: false,
+        notifications: false,
+        commerce: Boolean(getTemplate(template).commerce),
+        ...(content.features || {}),
+      },
     };
   }
 
