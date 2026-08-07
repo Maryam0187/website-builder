@@ -5,7 +5,6 @@ export async function POST(request) {
   const body = await request.json();
   const accessToken = String(body.token || "").trim();
   const brandName = String(body.brandName || "").trim();
-  const phone = String(body.phone || "").trim();
   const address = String(body.address || "").trim();
   const layout = body.layout === "multi-page" ? "multi-page" : "one-page";
 
@@ -21,7 +20,6 @@ export async function POST(request) {
       accessToken,
       brandName,
       layout,
-      phone,
       address,
     });
 

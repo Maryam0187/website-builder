@@ -321,19 +321,17 @@ async function finishBotOnboardingAndCreateDraft(conversation) {
   const siteName = conversation.websiteName || "your business";
   const answers = parseBotAnswers(conversation.botAnswers);
   const layout = answers.layout === "multi-page" ? "multi-page" : "one-page";
-  const phone = answers.phone || conversation.phone || "";
   const businessType = answers.businessType || conversation.businessType || "";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
   await query(
     `UPDATE conversations
-     SET phone = COALESCE(NULLIF($2, ''), phone),
-         business_type = COALESCE(NULLIF($3, ''), business_type),
-         bot_step = $4,
+     SET business_type = COALESCE(NULLIF($2, ''), business_type),
+         bot_step = $3,
          bot_onboarded = true,
          updated_at = now()
      WHERE id = $1`,
-    [conversation.id, phone, businessType, BOT_STEPS.DONE],
+    [conversation.id, businessType, BOT_STEPS.DONE],
   );
 
   if (conversation.siteId || !conversation.email) {
@@ -355,7 +353,6 @@ async function finishBotOnboardingAndCreateDraft(conversation) {
       brandName: siteName,
       ownerEmail: conversation.email,
       ownerPassword,
-      phone,
       address: "",
       layout,
       template,
@@ -494,27 +491,18 @@ export async function answerChatBotOnboarding(accessToken, { value, text } = {})
       );
       botLine =
         choice === "one-page"
-          ? "One page it is — everything scrolls on a single page."
-          : "Multiple pages it is — Home, About, and Contact as separate pages.";
-      nextStep = BOT_STEPS.PHONE;
+          ? "One page it is — everything scrolls on a single page. Next: style preference."
+          : "Multiple pages it is — Home, About, and Contact as separate pages. Next: style preference.";
+      nextStep = BOT_STEPS.STYLE;
     } else {
       throw new Error("Pick one page, multiple pages, or ask for an explanation.");
     }
   } else if (step === BOT_STEPS.PHONE) {
-    const choice = String(value || "").trim();
-    if (choice === "skip") {
-      answers.phone = "";
-      guestLine = "Skip for now";
-      botLine = "No problem — you can add a phone later in the editor.";
-      nextStep = BOT_STEPS.STYLE;
-    } else {
-      const phone = String(text || value || "").trim();
-      if (phone.length < 5) throw new Error("Enter a phone number or tap Skip.");
-      answers.phone = phone;
-      guestLine = phone;
-      botLine = "Saved. Last question — style preference.";
-      nextStep = BOT_STEPS.STYLE;
-    }
+    // Legacy chats that still have the phone step — skip and continue
+    answers.phone = "";
+    guestLine = "Skip phone";
+    botLine = "We’ll use email contact on your site. Last question — style preference.";
+    nextStep = BOT_STEPS.STYLE;
   } else if (step === BOT_STEPS.STYLE) {
     const choice = String(value || "").trim();
     const prompt = getOnboardingPrompt(BOT_STEPS.STYLE);
@@ -664,7 +652,6 @@ export async function createSampleSiteForGuest({
   accessToken,
   brandName,
   layout = "one-page",
-  phone = "",
   address = "",
 }) {
   const data = await getConversationByToken(accessToken);
@@ -687,7 +674,6 @@ export async function createSampleSiteForGuest({
     brandName: brandName || conversation.websiteName || conversation.name || "My Business",
     ownerEmail: conversation.email,
     ownerPassword,
-    phone: phone || conversation.phone || "",
     address,
     layout,
   });
@@ -737,7 +723,6 @@ export async function createDraftFromConversation({
   const content = normalizeSiteContent({
     ...createDefaultSiteContent({
       brandName: brandName || conversation.name || "Your Business",
-      phone: phone || conversation.phone || "",
       address: address || "",
       layout: resolvedLayout,
       template: resolvedTemplate,

@@ -254,13 +254,12 @@ export default function AdminInboxPage() {
               ["brandName", "Business name"],
               ["ownerEmail", "Owner email (login)"],
               ["ownerPassword", "Temporary password"],
-              ["phone", "Phone"],
-              ["address", "Address"],
+              ["address", "Address (optional)"],
             ].map(([key, label]) => (
               <div key={key}>
                 <label className="mb-1 block text-sm text-zinc-700">{label}</label>
                 <input
-                  required={key !== "phone" && key !== "address"}
+                  required={key !== "address"}
                   type={key === "ownerPassword" ? "text" : key === "ownerEmail" ? "email" : "text"}
                   className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none ring-cyan-400/30 focus:ring-2"
                   value={draftForm[key]}
@@ -268,6 +267,10 @@ export default function AdminInboxPage() {
                 />
               </div>
             ))}
+            <p className="text-xs text-zinc-500">
+              Sites use email contact and a form to{" "}
+              <span className="font-semibold">info@technonaire.com</span> (no phone on the website).
+            </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"

@@ -10,8 +10,8 @@ export default function CommerceContactModal({ open, onClose, contactHref = "#co
           Cart & checkout
         </h3>
         <p className="mt-3 text-sm leading-6 text-zinc-600">
-          Full shopping cart and checkout are not included on the sample site. Contact us and we can
-          enable online ordering for your business.
+          Full shopping cart and checkout are not included on the sample site. Email us or use the
+          contact form — we can enable online ordering for your business.
         </p>
         <div className="mt-6 flex flex-wrap justify-end gap-2">
           <button
@@ -22,11 +22,17 @@ export default function CommerceContactModal({ open, onClose, contactHref = "#co
             Close
           </button>
           <a
+            href="mailto:info@technonaire.com?subject=Enable%20cart%20%26%20checkout"
+            className="rounded-full border border-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+          >
+            info@technonaire.com
+          </a>
+          <a
             href={contactHref}
             onClick={onClose}
             className="rounded-full bg-[#0b3d91] px-5 py-2.5 text-sm font-semibold text-white"
           >
-            Contact us
+            Contact form
           </a>
         </div>
       </div>

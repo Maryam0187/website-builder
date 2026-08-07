@@ -131,14 +131,16 @@ function createGalleryPage(templateDefOrTitle = "Gallery") {
   };
 }
 
-function createContactPage({ phone = "", address = "", image } = {}) {
+export const DEFAULT_SITE_CONTACT_EMAIL = "info@technonaire.com";
+
+function createContactPage({ address = "", email, image } = {}) {
   return {
     type: "contact",
-    title: "Visit or call",
-    phone,
-    address,
+    title: "Get in touch",
+    address: address || "",
     hours: "Mon–Sat · 9am–7pm",
-    email: "",
+    email: email || DEFAULT_SITE_CONTACT_EMAIL,
+    showForm: true,
     image:
       image ||
       "https://images.unsplash.com/photo-1423666639041-f56000c27a9a?auto=format&fit=crop&w=2000&q=85",
@@ -257,8 +259,8 @@ export function createPageByType(type, { label, title } = {}) {
 export function createDefaultSiteContent({
   brandName = "Your Business",
   tagline,
-  phone = "",
   address = "",
+  email = DEFAULT_SITE_CONTACT_EMAIL,
   layout = "one-page",
   template = "other",
   businessType,
@@ -297,28 +299,28 @@ export function createDefaultSiteContent({
       gallery: galleryPage,
       menu: menuPage,
       contact: createContactPage({
-        phone,
         address,
+        email,
         image: templateDef.contactImage,
       }),
     },
   };
 }
 
-/** Switch template; keep brand name, layout, phone/contact where possible. */
+/** Switch template; keep brand name, layout, contact where possible. */
 export function applyTemplateToContent(content, templateId) {
   const normalized = normalizeSiteContent(content);
   const nextId = resolveTemplateId(templateId);
   const templateDef = getTemplate(nextId);
   const brandName = normalized.brand?.name || "Your Business";
-  const phone = normalized.pages?.contact?.phone || "";
   const address = normalized.pages?.contact?.address || "";
+  const email = normalized.pages?.contact?.email || DEFAULT_SITE_CONTACT_EMAIL;
   const layout = normalized.layout === "multi-page" ? "multi-page" : "one-page";
 
   const fresh = createDefaultSiteContent({
     brandName,
-    phone,
     address,
+    email,
     layout,
     template: nextId,
   });
@@ -357,8 +359,20 @@ export function normalizeSiteContent(content) {
             pageId,
           }));
     const template = resolveTemplateId(content.template || "other");
+    const pages = { ...content.pages };
+    if (pages.contact && typeof pages.contact === "object") {
+      const { phone: _removedPhone, ...contactRest } = pages.contact;
+      pages.contact = {
+        ...contactRest,
+        type: "contact",
+        title: contactRest.title === "Visit or call" ? "Get in touch" : contactRest.title || "Get in touch",
+        email: contactRest.email || DEFAULT_SITE_CONTACT_EMAIL,
+        showForm: contactRest.showForm !== false,
+      };
+    }
     return {
       ...content,
+      pages,
       template,
       layout: content.layout === "multi-page" ? "multi-page" : "one-page",
       nav,
@@ -378,8 +392,8 @@ export function normalizeSiteContent(content) {
   const migrated = createDefaultSiteContent({
     brandName,
     tagline: content.brand?.tagline || "Welcome — we are glad you are here",
-    phone: content.contact?.phone || "",
     address: content.contact?.address || "",
+    email: content.contact?.email || DEFAULT_SITE_CONTACT_EMAIL,
     layout: "one-page",
   });
 
@@ -395,7 +409,14 @@ export function normalizeSiteContent(content) {
     migrated.pages.about = { ...migrated.pages.about, ...content.about, type: "about" };
   }
   if (content.contact) {
-    migrated.pages.contact = { ...migrated.pages.contact, ...content.contact, type: "contact" };
+    const { phone: _phone, ...contactRest } = content.contact;
+    migrated.pages.contact = {
+      ...migrated.pages.contact,
+      ...contactRest,
+      type: "contact",
+      email: contactRest.email || DEFAULT_SITE_CONTACT_EMAIL,
+      showForm: contactRest.showForm !== false,
+    };
   }
 
   // Legacy single-page sites often had services on the home scroll —

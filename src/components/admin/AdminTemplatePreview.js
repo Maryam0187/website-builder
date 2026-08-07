@@ -34,8 +34,6 @@ export default async function AdminTemplatePreview({ templateId, pageParam = "ho
     brandName: SAMPLE_NAMES[id] || meta.label,
     template: id,
     layout: "one-page",
-    phone: "(555) 010-2000",
-    address: "123 Main Street",
   });
   const pageId = resolvePageId(content, pageParam);
   if (pageParam && pageParam !== "home" && pageId !== pageParam) notFound();

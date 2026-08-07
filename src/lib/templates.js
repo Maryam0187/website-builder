@@ -98,7 +98,7 @@ export const TEMPLATE_CATALOG = {
       headline: (name) => name,
       subheadline:
         "Professional care in a calm space. View treatments and get in touch to book your next visit.",
-      cta: "Book / contact us",
+      cta: "Book a meeting",
       image: img("photo-1560066984-138dadb4c035", 2000),
     },
     aboutImage: img("photo-1519494026892-80bbd2d6fd0d", 2000),

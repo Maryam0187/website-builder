@@ -4,7 +4,14 @@ import { useState } from "react";
 import SiteNav from "./SiteNav";
 import CommerceContactModal from "./CommerceContactModal";
 import Reveal from "./Reveal";
-import { isOnePageLayout, normalizeSiteContent, resolvePageId } from "@/lib/site-defaults";
+import SiteContactForm from "./SiteContactForm";
+import { bookMeetingLabel, getBookMeetingHref } from "@/lib/booking";
+import {
+  DEFAULT_SITE_CONTACT_EMAIL,
+  isOnePageLayout,
+  normalizeSiteContent,
+  resolvePageId,
+} from "@/lib/site-defaults";
 import { getTemplate } from "@/lib/templates";
 
 function getPath(obj, path) {
@@ -32,6 +39,7 @@ function renderPageSection({
   contactHref,
   onCommerceClick,
   heroVariant,
+  siteSlug = "",
 }) {
   if (pageType === "home") {
     return (
@@ -77,6 +85,7 @@ function renderPageSection({
         handle={handle}
         textStyle={textStyle}
         editMode={editMode}
+        siteSlug={siteSlug}
       />
     );
   }
@@ -171,7 +180,7 @@ function renderPageSection({
 export default function LocalBusinessTemplate({
   content,
   pageId: pageIdProp = "home",
-  slug,
+  slug = "",
   basePath,
   editMode = false,
   onEdit,
@@ -223,6 +232,7 @@ export default function LocalBusinessTemplate({
     contactHref,
     onCommerceClick: () => setCommerceOpen(true),
     heroVariant,
+    siteSlug: slug || "",
   };
 
   const overlayNav = heroVariant === "bleed";
@@ -599,15 +609,29 @@ function AboutPage({ page, pageId, theme, content, editable, handle, textStyle, 
   );
 }
 
-function ContactPage({ page, pageId, theme, content, editable, handle, textStyle, editMode }) {
+function ContactPage({
+  page,
+  pageId,
+  theme,
+  content,
+  editable,
+  handle,
+  textStyle,
+  editMode,
+  siteSlug = "",
+}) {
   const base = `pages.${pageId}`;
+  const email = page.email || DEFAULT_SITE_CONTACT_EMAIL;
+  const brandName = content?.brand?.name || "";
+  const calendlyUrl = getBookMeetingHref();
+
   return (
     <section id={pageId} className="relative min-h-[80svh] overflow-hidden">
       {page.image ? (
         <div className="absolute inset-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={page.image} alt="" className="h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/55 to-black/35" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/60 to-black/35" />
         </div>
       ) : (
         <div className="absolute inset-0" style={{ background: theme.primary }} />
@@ -619,36 +643,75 @@ function ContactPage({ page, pageId, theme, content, editable, handle, textStyle
             style={textStyle(content, `${base}.title`, "#ffffff")}
             onClick={() => handle(`${base}.title`, "Contact title", "text", "#ffffff")}
           >
-            {page.title || "Visit or call"}
+            {page.title || "Get in touch"}
           </h1>
-          <div className="mt-8 grid max-w-xl gap-3 text-lg text-white/90">
-            <p
-              className={editable()}
-              onClick={() => handle(`${base}.phone`, "Phone", "text", "#ffffff")}
-            >
-              {page.phone || "Add your phone"}
+          <div className="mt-6 grid max-w-xl gap-2 text-lg text-white/90">
+            <p>
+              Email{" "}
+              <a
+                href={`mailto:${email}`}
+                className={`font-semibold underline underline-offset-4 ${editable()}`}
+                onClick={(e) => {
+                  if (editMode) {
+                    e.preventDefault();
+                    handle(`${base}.email`, "Contact email", "text", "#ffffff");
+                  }
+                }}
+              >
+                {email}
+              </a>
             </p>
-            <p
-              className={editable()}
-              onClick={() => handle(`${base}.address`, "Address", "text", "#ffffff")}
-            >
-              {page.address || "Add your address"}
-            </p>
-            <p
-              className={editable()}
-              onClick={() => handle(`${base}.hours`, "Hours", "text", "#ffffff")}
-            >
-              {page.hours}
-            </p>
-            <p
-              className={editable()}
-              onClick={() => handle(`${base}.email`, "Email", "text", "#ffffff")}
-            >
-              {page.email || "Add your email"}
-            </p>
+            {(page.address || editMode) && (
+              <p
+                className={editable()}
+                onClick={() => handle(`${base}.address`, "Address", "text", "#ffffff")}
+              >
+                {page.address || "Add your address (optional)"}
+              </p>
+            )}
+            {(page.hours || editMode) && (
+              <p
+                className={editable()}
+                onClick={() => handle(`${base}.hours`, "Hours", "text", "#ffffff")}
+              >
+                {page.hours || "Add hours (optional)"}
+              </p>
+            )}
           </div>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a
+              href={calendlyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex rounded-full px-6 py-3 text-sm font-semibold text-white transition hover:brightness-110"
+              style={{ background: theme.primary }}
+            >
+              {bookMeetingLabel}
+            </a>
+            <a
+              href={`mailto:${email}`}
+              className="inline-flex rounded-full border border-white/45 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
+            >
+              Email us
+            </a>
+          </div>
+          {!editMode && page.showForm !== false ? (
+            <SiteContactForm
+              theme={theme}
+              siteName={brandName}
+              siteSlug={siteSlug}
+              toEmail={email}
+            />
+          ) : null}
           {editMode && (
             <div className="mt-8 flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="rounded-full border border-white/40 px-4 py-2 text-sm text-white"
+                onClick={() => handle(`${base}.email`, "Contact email", "text", "#ffffff")}
+              >
+                Edit contact email
+              </button>
               <button
                 type="button"
                 className="rounded-full border border-white/40 px-4 py-2 text-sm text-white"

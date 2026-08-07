@@ -5,6 +5,7 @@ export const BOT_STEPS = {
   BUSINESS_TYPE: "business_type",
   LAYOUT: "layout",
   LAYOUT_HELP: "layout_help",
+  /** @deprecated kept so in-progress chats on the old phone step can finish */
   PHONE: "phone",
   STYLE: "style",
   DONE: "done",
@@ -73,14 +74,6 @@ export function getOnboardingPrompt(step) {
             description: "Separate pages linked in the menu",
           },
         ],
-      };
-    case BOT_STEPS.PHONE:
-      return {
-        step,
-        title: "Phone or WhatsApp for your contact page?",
-        hint: "Optional — you can skip and add it later when editing.",
-        input: "phone",
-        options: [{ value: "skip", label: "Skip for now" }],
       };
     case BOT_STEPS.STYLE:
       return {
