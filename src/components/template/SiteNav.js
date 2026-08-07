@@ -22,6 +22,8 @@ export default function SiteNav({
   onCartClick,
   /** Light text over photo hero */
   overlay = false,
+  /** Wider header for retail / launch layouts */
+  wide = false,
 }) {
   const theme = content?.theme || {};
   const brand = content?.brand || {};
@@ -35,6 +37,7 @@ export default function SiteNav({
     ? content?.styles?.["brand.tagline"]?.color || "rgba(255,255,255,0.82)"
     : content?.styles?.["brand.tagline"]?.color || theme.muted;
   const linkColor = overlay ? "#ffffff" : theme.text;
+  const maxW = wide ? "max-w-6xl" : "max-w-5xl";
 
   function hrefFor(id) {
     if (onePage) {
@@ -52,7 +55,7 @@ export default function SiteNav({
 
   return (
     <header
-      className={`mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-5 ${
+      className={`mx-auto flex ${maxW} flex-wrap items-center justify-between gap-4 px-6 py-5 ${
         overlay ? "w-full" : ""
       }`}
     >

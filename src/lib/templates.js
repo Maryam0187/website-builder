@@ -1,6 +1,6 @@
 /**
  * Business-type website templates.
- * Default look: one-page scroll, full-bleed photo sections with text over images.
+ * Each template has a distinct visual layoutStyle (single-page scroll).
  * Cart/checkout is not built-in — commerce templates prompt clients to contact us.
  */
 
@@ -10,6 +10,12 @@ export const TEMPLATE_IDS = [
   "restaurant",
   "shop",
   "services",
+  "portfolio",
+  "realestate",
+  "coaching",
+  "events",
+  "nonprofit",
+  "company",
   "other",
 ];
 
@@ -20,6 +26,13 @@ export const BUSINESS_TYPE_TO_TEMPLATE = {
   restaurant: "restaurant",
   shop: "shop",
   services: "services",
+  portfolio: "portfolio",
+  realestate: "realestate",
+  "real-estate": "realestate",
+  coaching: "coaching",
+  events: "events",
+  nonprofit: "nonprofit",
+  company: "company",
   other: "other",
 };
 
@@ -30,8 +43,10 @@ export const TEMPLATE_CATALOG = {
   bakery: {
     id: "bakery",
     label: "Bakery / cafe",
-    description: "Warm bakery look with pastry, bread, and coffee photography.",
+    description: "Editorial bakery look — oversized type and stacked photo bands.",
     commerce: false,
+    dineOs: true,
+    layoutStyle: "editorial",
     theme: {
       primary: "#6b3a1f",
       accent: "#1a120c",
@@ -80,16 +95,16 @@ export const TEMPLATE_CATALOG = {
       { caption: "Open kitchen", image: img("photo-1464349095431-e9a21285b5f3") },
       { caption: "Neighborhood favorite", image: img("photo-1578985545062-69928b1d9587") },
     ],
-    heroVariant: "bleed",
   },
   clinic: {
     id: "clinic",
     label: "Clinic / salon",
-    description: "Calm clinic look with serene treatment and spa photography.",
+    description: "Calm split-panel clinic look with soft light and breathing room.",
     commerce: false,
+    layoutStyle: "serene",
     theme: {
       primary: "#1f5c57",
-      accent: "#0c1a19",
+      accent: "#e8f2f0",
       text: "#14302e",
       muted: "#5a736f",
     },
@@ -135,18 +150,19 @@ export const TEMPLATE_CATALOG = {
       { caption: "Natural light", image: img("photo-1512290923902-8a9f81dc236c") },
       { caption: "Detail care", image: img("photo-1487412947147-5cebf100ffc2") },
     ],
-    heroVariant: "bleed",
   },
   restaurant: {
     id: "restaurant",
     label: "Restaurant",
-    description: "Food-first dining look with plated dishes and ambience photos.",
+    description: "Dark dining theater — centered type and a dramatic menu list.",
     commerce: true,
+    dineOs: true,
+    layoutStyle: "theater",
     theme: {
-      primary: "#b45309",
-      accent: "#140c08",
-      text: "#1c1917",
-      muted: "#78716c",
+      primary: "#c45c26",
+      accent: "#0c0a09",
+      text: "#f5f0eb",
+      muted: "#a8a29e",
     },
     tagline: "Good food, good company",
     hero: {
@@ -190,18 +206,18 @@ export const TEMPLATE_CATALOG = {
       { caption: "Wine & share", image: img("photo-1559339352-11d035aa65de") },
       { caption: "Kitchen fire", image: img("photo-1556910103-1c02745aae4d") },
     ],
-    heroVariant: "bleed",
   },
   shop: {
     id: "shop",
     label: "Shop / store",
-    description: "Retail look with product and storefront photography.",
+    description: "Retail-first layout with bold product grid and storefront energy.",
     commerce: true,
+    layoutStyle: "retail",
     theme: {
-      primary: "#1d4ed8",
-      accent: "#0a1020",
-      text: "#0f172a",
-      muted: "#64748b",
+      primary: "#0d9488",
+      accent: "#0b1220",
+      text: "#e2e8f0",
+      muted: "#94a3b8",
     },
     tagline: "Find what you need",
     hero: {
@@ -245,18 +261,18 @@ export const TEMPLATE_CATALOG = {
       { caption: "New arrivals", image: img("photo-1523275335684-37898b6baf30") },
       { caption: "Local finds", image: img("photo-1528698827591-e19ccd7bc23d") },
     ],
-    heroVariant: "bleed",
   },
   services: {
     id: "services",
     label: "Professional services",
-    description: "Polished look with workspace and team photography.",
+    description: "Process-rail layout with numbered offers and polished workspace photos.",
     commerce: false,
+    layoutStyle: "process",
     theme: {
-      primary: "#0f3d5c",
-      accent: "#081018",
-      text: "#0f172a",
-      muted: "#64748b",
+      primary: "#2563eb",
+      accent: "#0f172a",
+      text: "#e2e8f0",
+      muted: "#94a3b8",
     },
     tagline: "Clear expertise. Practical results.",
     hero: {
@@ -300,13 +316,343 @@ export const TEMPLATE_CATALOG = {
       { caption: "Team sync", image: img("photo-1521737711867-e3b97375f902") },
       { caption: "Handshake", image: img("photo-1556761175-5973dc0f32e7") },
     ],
-    heroVariant: "bleed",
+  },
+  portfolio: {
+    id: "portfolio",
+    label: "Portfolio / freelancer",
+    description: "Asymmetric folio layout — name-forward with a bento work grid.",
+    commerce: false,
+    layoutStyle: "folio",
+    theme: {
+      primary: "#84cc16",
+      accent: "#0a0a0a",
+      text: "#f4f4f5",
+      muted: "#a1a1aa",
+    },
+    tagline: "Selected work & collaborations",
+    hero: {
+      headline: (name) => name,
+      subheadline:
+        "Designer, maker, or creative — show your best work and make it easy for clients to reach you.",
+      cta: "View work",
+      image: img("photo-1618005182384-a83a8bd57fbe", 2000),
+    },
+    aboutImage: img("photo-1558655146-d09347e92766", 2000),
+    contactImage: img("photo-1517245386807-bb43f82c33c4", 2000),
+    aboutBody: (name) =>
+      `${name} is a creative practice focused on clear ideas and craft. Share your background, tools, and the kind of projects you love.`,
+    menuLabel: "Services",
+    menuItems: [
+      {
+        name: "Brand identity",
+        price: "Project",
+        note: "Logo & system",
+        image: img("photo-1634942537034-2531766767d1"),
+      },
+      {
+        name: "Web design",
+        price: "Project",
+        note: "Sites & product",
+        image: img("photo-1460925895917-afdab827c52f"),
+      },
+      {
+        name: "Creative direction",
+        price: "Retainer",
+        note: "Ongoing",
+        image: img("photo-1558655146-9f40138edfeb"),
+      },
+    ],
+    galleryLabel: "Selected work",
+    galleryImages: [
+      { caption: "Campaign system", image: img("photo-1618005182384-a83a8bd57fbe") },
+      { caption: "Editorial layout", image: img("photo-1558655146-d09347e92766") },
+      { caption: "Product UI", image: img("photo-1460925895917-afdab827c52f") },
+      { caption: "Identity mark", image: img("photo-1634942537034-2531766767d1") },
+      { caption: "Motion still", image: img("photo-1558655146-9f40138edfeb") },
+      { caption: "Studio desk", image: img("photo-1517245386807-bb43f82c33c4") },
+    ],
+  },
+  realestate: {
+    id: "realestate",
+    label: "Real estate",
+    description: "Cinematic property showcase with parallax hero and listing cards.",
+    commerce: false,
+    layoutStyle: "estate",
+    theme: {
+      primary: "#c9a227",
+      accent: "#0b1426",
+      text: "#f1f5f9",
+      muted: "#94a3b8",
+    },
+    tagline: "Homes with presence",
+    hero: {
+      headline: (name) => name,
+      subheadline:
+        "Find your next home or list with confidence. Browse featured properties and book a private showing.",
+      cta: "See listings",
+      image: img("photo-1600596542815-ffad4c1539a9", 2000),
+    },
+    aboutImage: img("photo-1560518883-ce09059eeffa", 2000),
+    contactImage: img("photo-1600585154340-be6161a56a0c", 2000),
+    aboutBody: (name) =>
+      `${name} helps buyers and sellers move with clarity. Share your market focus, neighborhoods, and how you guide clients.`,
+    menuLabel: "Featured homes",
+    menuItems: [
+      {
+        name: "Garden terrace home",
+        price: "$620k",
+        note: "3 bed · city edge",
+        image: img("photo-1600585154340-be6161a56a0c"),
+      },
+      {
+        name: "Light-filled loft",
+        price: "$485k",
+        note: "2 bed · downtown",
+        image: img("photo-1502672260266-1c1ef2d93688"),
+      },
+      {
+        name: "Quiet family villa",
+        price: "$890k",
+        note: "4 bed · suburbs",
+        image: img("photo-1600596542815-ffad4c1539a9"),
+      },
+    ],
+    galleryLabel: "Neighborhoods",
+    galleryImages: [
+      { caption: "Tree-lined streets", image: img("photo-1560518883-ce09059eeffa") },
+      { caption: "Evening facade", image: img("photo-1600585154340-be6161a56a0c") },
+      { caption: "Open living", image: img("photo-1502672260266-1c1ef2d93688") },
+      { caption: "Kitchen light", image: img("photo-1484154218962-a197022b5858") },
+      { caption: "City skyline", image: img("photo-1449824913935-59a10b8d2000") },
+      { caption: "Quiet courtyard", image: img("photo-1600566753190-17f0baa2a6c3") },
+    ],
+  },
+  coaching: {
+    id: "coaching",
+    label: "Coaching / courses",
+    description: "Mentor-focus layout with portrait hero and program rows.",
+    commerce: false,
+    layoutStyle: "mentor",
+    theme: {
+      primary: "#0f766e",
+      accent: "#10201c",
+      text: "#ecfdf5",
+      muted: "#99b3a8",
+    },
+    tagline: "Clarity, momentum, results",
+    hero: {
+      headline: (name) => name,
+      subheadline:
+        "One-to-one coaching and practical programs that help people move forward with confidence.",
+      cta: "Explore programs",
+      image: img("photo-1573496359142-b8d87734a5a2", 2000),
+    },
+    aboutImage: img("photo-1522202176988-66273c2fd55f", 2000),
+    contactImage: img("photo-1515187029135-18ee286d815b", 2000),
+    aboutBody: (name) =>
+      `${name} coaches people who want practical change. Share your method, who you serve, and what transformation looks like.`,
+    menuLabel: "Programs",
+    menuItems: [
+      {
+        name: "Discovery call",
+        price: "Free",
+        note: "30 min",
+        image: img("photo-1515187029135-18ee286d815b"),
+      },
+      {
+        name: "6-week intensive",
+        price: "Apply",
+        note: "Most popular",
+        image: img("photo-1522202176988-66273c2fd55f"),
+      },
+      {
+        name: "Group cohort",
+        price: "Seasonal",
+        note: "Limited seats",
+        image: img("photo-1552664730-d307ca884978"),
+      },
+    ],
+    galleryLabel: "Moments from the work",
+    galleryImages: [
+      { caption: "Deep focus session", image: img("photo-1573496359142-b8d87734a5a2") },
+      { caption: "Workshop circle", image: img("photo-1522202176988-66273c2fd55f") },
+      { caption: "Notebook planning", image: img("photo-1434030216411-0b793f4b4173") },
+      { caption: "Quiet reflection", image: img("photo-1499750310107-5fef28a66643") },
+      { caption: "Team breakthrough", image: img("photo-1552664730-d307ca884978") },
+      { caption: "Celebration", image: img("photo-1515187029135-18ee286d815b") },
+    ],
+  },
+  events: {
+    id: "events",
+    label: "Events / venues",
+    description: "Night marquee energy with a schedule-style offer list.",
+    commerce: true,
+    layoutStyle: "marquee",
+    theme: {
+      primary: "#fb7185",
+      accent: "#09090b",
+      text: "#fafafa",
+      muted: "#a1a1aa",
+    },
+    tagline: "Nights worth showing up for",
+    hero: {
+      headline: (name) => name,
+      subheadline:
+        "Venue, nightlife, or productions — show the atmosphere, the lineup, and how to book.",
+      cta: "See what’s on",
+      image: img("photo-1470229722913-7c0e2dbbafd3", 2000),
+    },
+    aboutImage: img("photo-1514525253161-7a46d19cd819", 2000),
+    contactImage: img("photo-1492684223066-81342ee5ff30", 2000),
+    aboutBody: (name) =>
+      `${name} creates unforgettable nights. Share your vibe, capacity, and what makes guests come back.`,
+    menuLabel: "Experiences",
+    menuItems: [
+      {
+        name: "Private hire",
+        price: "Quote",
+        note: "Full venue",
+        image: img("photo-1514525253161-7a46d19cd819"),
+      },
+      {
+        name: "Ticketed night",
+        price: "From $25",
+        note: "Doors 9pm",
+        image: img("photo-1470229722913-7c0e2dbbafd3"),
+      },
+      {
+        name: "Daytime event",
+        price: "Custom",
+        note: "Brand / launch",
+        image: img("photo-1492684223066-81342ee5ff30"),
+      },
+    ],
+    galleryLabel: "Atmosphere",
+    galleryImages: [
+      { caption: "Main floor", image: img("photo-1470229722913-7c0e2dbbafd3") },
+      { caption: "Stage lights", image: img("photo-1514525253161-7a46d19cd819") },
+      { caption: "Crowd energy", image: img("photo-1492684223066-81342ee5ff30") },
+      { caption: "VIP lounge", image: img("photo-1566737236500-c8ac43014a67") },
+      { caption: "Detail set", image: img("photo-1501281668745-f7f57925c3b4") },
+      { caption: "Afterglow", image: img("photo-1429962714451-bb934ecdc4ec") },
+    ],
+  },
+  nonprofit: {
+    id: "nonprofit",
+    label: "Nonprofit / cause",
+    description: "Story-band cause layout with warm impact photography.",
+    commerce: false,
+    layoutStyle: "cause",
+    theme: {
+      primary: "#0e7490",
+      accent: "#f0f9ff",
+      text: "#0c4a6e",
+      muted: "#64748b",
+    },
+    tagline: "People first. Progress together.",
+    hero: {
+      headline: (name) => name,
+      subheadline:
+        "A clear home for your mission — who you help, how to join, and how supporters can take part.",
+      cta: "Get involved",
+      image: img("photo-1488521787991-ed7bbaae773c", 2000),
+    },
+    aboutImage: img("photo-1469571486292-0ba58a3f068b", 2000),
+    contactImage: img("photo-1559027615-cd4628902d4a", 2000),
+    aboutBody: (name) =>
+      `${name} exists to create real change in the community. Share your mission, the people you serve, and how donations or volunteers help.`,
+    menuLabel: "Ways to help",
+    menuItems: [
+      {
+        name: "Volunteer",
+        price: "Join",
+        note: "Hands-on",
+        image: img("photo-1559027615-cd4628902d4a"),
+      },
+      {
+        name: "Donate",
+        price: "Any amount",
+        note: "Fuel the work",
+        image: img("photo-1532629345422-7515f3d16bb6"),
+      },
+      {
+        name: "Partner",
+        price: "Talk to us",
+        note: "Orgs & sponsors",
+        image: img("photo-1469571486292-0ba58a3f068b"),
+      },
+    ],
+    galleryLabel: "Impact in pictures",
+    galleryImages: [
+      { caption: "Community day", image: img("photo-1488521787991-ed7bbaae773c") },
+      { caption: "Volunteer crew", image: img("photo-1559027615-cd4628902d4a") },
+      { caption: "Workshop circle", image: img("photo-1469571486292-0ba58a3f068b") },
+      { caption: "Care packages", image: img("photo-1532629345422-7515f3d16bb6") },
+      { caption: "Youth program", image: img("photo-1509062522246-3755977927d7") },
+      { caption: "Shared meal", image: img("photo-1469571486292-0ba58a3f068b") },
+    ],
+  },
+  company: {
+    id: "company",
+    label: "Company / landing",
+    description: "Modern launch landing — alternating feature bands and crisp CTAs.",
+    commerce: false,
+    layoutStyle: "launch",
+    theme: {
+      primary: "#0891b2",
+      accent: "#020617",
+      text: "#e2e8f0",
+      muted: "#94a3b8",
+    },
+    tagline: "Built for what’s next",
+    hero: {
+      headline: (name) => name,
+      subheadline:
+        "A sharp single-page home for your product or company — clear offer, proof moments, and a direct contact path.",
+      cta: "Talk to us",
+      image: img("photo-1497366216548-37526070297c", 2000),
+    },
+    aboutImage: img("photo-1522071820081-009f0129c71c", 2000),
+    contactImage: img("photo-1556761175-5973dc0f32e7", 2000),
+    aboutBody: (name) =>
+      `${name} helps teams move faster with less friction. Use this space for your product story, values, and who you build for.`,
+    menuLabel: "What we offer",
+    menuItems: [
+      {
+        name: "Core product",
+        price: "Demo",
+        note: "Start here",
+        image: img("photo-1460925895917-afdab827c52f"),
+      },
+      {
+        name: "Implementation",
+        price: "Custom",
+        note: "Guided setup",
+        image: img("photo-1552664730-d307ca884978"),
+      },
+      {
+        name: "Support plan",
+        price: "Monthly",
+        note: "Ongoing",
+        image: img("photo-1600880292203-757bb62b4baf"),
+      },
+    ],
+    galleryLabel: "Product & team",
+    galleryImages: [
+      { caption: "Workspace", image: img("photo-1497366216548-37526070297c") },
+      { caption: "Team huddle", image: img("photo-1522071820081-009f0129c71c") },
+      { caption: "Product screen", image: img("photo-1460925895917-afdab827c52f") },
+      { caption: "Workshop", image: img("photo-1552664730-d307ca884978") },
+      { caption: "Client call", image: img("photo-1600880292203-757bb62b4baf") },
+      { caption: "Launch board", image: img("photo-1454165804606-c3d57bc86b40") },
+    ],
   },
   other: {
     id: "other",
     label: "Other / general",
-    description: "Stylish starter with warm neighborhood and workspace photos.",
+    description: "Full-bleed photo scroll — a stylish all-purpose starter.",
     commerce: false,
+    layoutStyle: "bleed",
     theme: {
       primary: "#14532d",
       accent: "#0a1410",
@@ -355,7 +701,6 @@ export const TEMPLATE_CATALOG = {
       { caption: "Community", image: img("photo-1529156069898-49953e39b3ac") },
       { caption: "Say hello", image: img("photo-1423666639041-f56000c27a9a") },
     ],
-    heroVariant: "bleed",
   },
 };
 
@@ -369,6 +714,10 @@ export function getTemplate(templateOrBusinessType) {
   return TEMPLATE_CATALOG[resolveTemplateId(templateOrBusinessType)] || TEMPLATE_CATALOG.other;
 }
 
+export function getLayoutStyle(templateOrBusinessType) {
+  return getTemplate(templateOrBusinessType).layoutStyle || "bleed";
+}
+
 export function listTemplates() {
   return TEMPLATE_IDS.map((id) => {
     const t = TEMPLATE_CATALOG[id];
@@ -377,6 +726,8 @@ export function listTemplates() {
       label: t.label,
       description: t.description,
       commerce: t.commerce,
+      dineOs: Boolean(t.dineOs),
+      layoutStyle: t.layoutStyle,
       theme: t.theme,
       heroImage: typeof t.hero?.image === "string" ? t.hero.image : "",
       tagline: t.tagline,

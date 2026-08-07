@@ -1,3 +1,4 @@
+import { DINEOS_DEFAULTS, getDineOsUrl, templateIncludesDineOs } from "./dineos";
 import { getTemplate, resolveTemplateId } from "./templates";
 
 export function slugify(text) {
@@ -147,6 +148,18 @@ function createContactPage({ address = "", email, image } = {}) {
   };
 }
 
+function createDineOsPage() {
+  return {
+    type: "dineos",
+    title: DINEOS_DEFAULTS.title,
+    body: DINEOS_DEFAULTS.body,
+    cta: DINEOS_DEFAULTS.cta,
+    eyebrow: DINEOS_DEFAULTS.eyebrow,
+    href: getDineOsUrl(),
+    points: DINEOS_DEFAULTS.points.map((p) => ({ ...p })),
+  };
+}
+
 function createServicesPage(title = "What we offer") {
   return {
     type: "services",
@@ -250,6 +263,8 @@ export function createPageByType(type, { label, title } = {}) {
       return createContactPage();
     case "home":
       return createHomePage(pageTitle);
+    case "dineos":
+      return createDineOsPage();
     case "content":
     default:
       return createContentPage(pageTitle);
@@ -271,6 +286,34 @@ export function createDefaultSiteContent({
   const resolvedLayout = layout === "multi-page" ? "multi-page" : "one-page";
   const menuPage = createMenuPage(templateDef);
   const galleryPage = createGalleryPage(templateDef);
+  const includeDineOs = templateIncludesDineOs(templateId);
+  const dineOsPage = includeDineOs ? createDineOsPage() : null;
+
+  const nav = [
+    { label: "Home", pageId: "home" },
+    { label: "About", pageId: "about" },
+    { label: galleryPage.title, pageId: "gallery" },
+    { label: menuPage.title, pageId: "menu" },
+  ];
+  if (includeDineOs) {
+    nav.push({ label: "DineOS", pageId: "dineos" });
+  }
+  nav.push({ label: "Contact", pageId: "contact" });
+
+  const pages = {
+    home: createHomePage(brandName, templateDef),
+    about: createAboutPage(brandName, templateDef),
+    gallery: galleryPage,
+    menu: menuPage,
+    contact: createContactPage({
+      address,
+      email,
+      image: templateDef.contactImage,
+    }),
+  };
+  if (dineOsPage) {
+    pages.dineos = dineOsPage;
+  }
 
   return {
     layout: resolvedLayout,
@@ -284,26 +327,11 @@ export function createDefaultSiteContent({
       pwa: false,
       notifications: false,
       commerce: Boolean(templateDef.commerce),
+      dineOs: includeDineOs,
     },
     styles: {},
-    nav: [
-      { label: "Home", pageId: "home" },
-      { label: "About", pageId: "about" },
-      { label: galleryPage.title, pageId: "gallery" },
-      { label: menuPage.title, pageId: "menu" },
-      { label: "Contact", pageId: "contact" },
-    ],
-    pages: {
-      home: createHomePage(brandName, templateDef),
-      about: createAboutPage(brandName, templateDef),
-      gallery: galleryPage,
-      menu: menuPage,
-      contact: createContactPage({
-        address,
-        email,
-        image: templateDef.contactImage,
-      }),
-    },
+    nav,
+    pages,
   };
 }
 
@@ -315,13 +343,12 @@ export function applyTemplateToContent(content, templateId) {
   const brandName = normalized.brand?.name || "Your Business";
   const address = normalized.pages?.contact?.address || "";
   const email = normalized.pages?.contact?.email || DEFAULT_SITE_CONTACT_EMAIL;
-  const layout = normalized.layout === "multi-page" ? "multi-page" : "one-page";
-
+  // Niche templates are designed as single-page scroll experiences
   const fresh = createDefaultSiteContent({
     brandName,
     address,
     email,
-    layout,
+    layout: "one-page",
     template: nextId,
   });
 

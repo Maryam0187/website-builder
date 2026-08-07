@@ -25,6 +25,12 @@ export function getOnboardingPrompt(step) {
           { value: "restaurant", label: "Restaurant" },
           { value: "shop", label: "Shop / store" },
           { value: "services", label: "Professional services" },
+          { value: "portfolio", label: "Portfolio / freelancer" },
+          { value: "realestate", label: "Real estate" },
+          { value: "coaching", label: "Coaching / courses" },
+          { value: "events", label: "Events / venues" },
+          { value: "nonprofit", label: "Nonprofit / cause" },
+          { value: "company", label: "Company / landing" },
           { value: "other", label: "Other" },
         ],
       };

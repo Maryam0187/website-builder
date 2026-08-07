@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getSiteBySlug } from "@/lib/store-actions";
 import { requireUser } from "@/lib/auth";
 import { isOnePageLayout, resolvePageId } from "@/lib/site-defaults";
-import LocalBusinessTemplate from "@/components/template/LocalBusinessTemplate";
+import SiteTemplate from "@/components/template/SiteTemplate";
 import BrandLogo from "@/components/BrandLogo";
 
 async function loadPreview(slug, pageParam) {
@@ -63,5 +63,5 @@ export default async function SitePreview({ slug, pageParam = "home" }) {
   if (result.forbidden) return <ForbiddenPreview />;
 
   const { site, pageId } = result;
-  return <LocalBusinessTemplate content={site.content} pageId={pageId} slug={site.slug} />;
+  return <SiteTemplate content={site.content} pageId={pageId} slug={site.slug} />;
 }

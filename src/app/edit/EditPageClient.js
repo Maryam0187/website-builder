@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import LocalBusinessTemplate from "@/components/template/LocalBusinessTemplate";
+import SiteTemplate from "@/components/template/SiteTemplate";
 import EditPanel from "@/components/editor/EditPanel";
 import TemplateChangeDialog from "@/components/editor/TemplateChangeDialog";
 import MessageThread from "@/components/messaging/MessageThread";
@@ -303,7 +303,7 @@ export default function EditPageClient() {
         and tell us — we&apos;ll help.
       </div>
 
-      <LocalBusinessTemplate
+      <SiteTemplate
         content={site.content}
         pageId={pageId}
         slug={site.slug}

@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createDefaultSiteContent, resolvePageId } from "@/lib/site-defaults";
 import { getTemplate, listTemplates, TEMPLATE_IDS } from "@/lib/templates";
-import LocalBusinessTemplate from "@/components/template/LocalBusinessTemplate";
+import SiteTemplate from "@/components/template/SiteTemplate";
 
 const SAMPLE_NAMES = {
   bakery: "Sunrise Bakery",
@@ -11,6 +11,12 @@ const SAMPLE_NAMES = {
   restaurant: "Cedar Table",
   shop: "Northside Goods",
   services: "Bright Path Consulting",
+  portfolio: "Aria Studio",
+  realestate: "Harbor Homes",
+  coaching: "Northstar Coaching",
+  events: "Afterglow Venue",
+  nonprofit: "Open Hands Project",
+  company: "Pulse Labs",
   other: "Neighborhood Co.",
 };
 
@@ -73,7 +79,7 @@ export default async function AdminTemplatePreview({ templateId, pageParam = "ho
         </div>
       </div>
 
-      <LocalBusinessTemplate content={content} pageId={pageId} basePath={basePath} />
+      <SiteTemplate content={content} pageId={pageId} basePath={basePath} />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   resolvePageId,
 } from "@/lib/site-defaults";
 import { getTemplate } from "@/lib/templates";
+import DineOsSection from "./DineOsSection";
 
 function getPath(obj, path) {
   return path.split(".").reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
@@ -135,6 +136,21 @@ function renderPageSection({
       />
     );
   }
+  if (pageType === "dineos") {
+    return (
+      <DineOsSection
+        key={pageId}
+        page={page}
+        pageId={pageId}
+        theme={theme}
+        content={content}
+        editable={editable}
+        handle={handle}
+        editMode={editMode}
+        variant="dark"
+      />
+    );
+  }
   if (pageType === "faq") {
     return (
       <FaqPage
@@ -191,7 +207,8 @@ export default function LocalBusinessTemplate({
   const theme = normalized.theme || {};
   const brand = normalized.brand || {};
   const templateDef = getTemplate(normalized.template);
-  const heroVariant = templateDef.heroVariant || "split-warm";
+  // Default bleed layout uses full-bleed photo hero (legacy heroVariant still honored)
+  const heroVariant = templateDef.heroVariant || "bleed";
   const onePage = isOnePageLayout(normalized);
   const pageId = resolvePageId(normalized, pageIdProp);
   const page = normalized.pages?.[pageId] || normalized.pages?.home || {};

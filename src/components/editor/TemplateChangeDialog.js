@@ -32,7 +32,8 @@ export default function TemplateChangeDialog({
         </h3>
         <p className="mt-3 text-sm leading-6 text-zinc-600">
           Your site will refresh with the <span className="font-medium text-zinc-800">{toLabel}</span>{" "}
-          starter layout, photos, and colors
+          starter layout, photos, and colors. Each niche uses a different
+          single-page design.
           {fromLabel ? (
             <>
               {" "}

@@ -195,10 +195,21 @@ body {
   margin-top: 0;
 }
 
+
+[data-layout="folio"] .tpl-fade-up,
+[data-layout="marquee"] .tpl-fade-up,
+[data-layout="launch"] .tpl-fade-up {
+  animation-duration: 1.05s;
+}
+
 @media (min-width: 768px) {
   .tpl-gallery-tile:nth-child(3n + 2) {
     margin-top: 1.5rem;
   }
+}
+
+[data-layout="estate"] .tpl-parallax-hero {
+  min-height: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {
