@@ -1,8 +1,12 @@
 /** DineOS — Technonaire dine-in OS for restaurants & cafes. */
 
+/** Flip to true when ready to show the DineOS section again on restaurant/bakery sites. */
+export const DINEOS_SECTION_ENABLED = false;
+
 export const DINEOS_TEMPLATE_IDS = ["restaurant", "bakery"];
 
 export function templateIncludesDineOs(templateId) {
+  if (!DINEOS_SECTION_ENABLED) return false;
   return DINEOS_TEMPLATE_IDS.includes(String(templateId || "").toLowerCase());
 }
 

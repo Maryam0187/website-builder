@@ -101,11 +101,12 @@ export default function EditPanel({ draft, onClose, onSave }) {
 
       {draft.type === "textarea" ? (
         <textarea
-          className="min-h-28 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+          className="min-h-28 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 caret-zinc-900"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           style={{
-            color: color || "#14201c",
+            // Always black in the editor — site colors (often white) are invisible on this panel
+            color: "#18181b",
             fontSize: fontSize || undefined,
             fontWeight: fontWeight || undefined,
           }}
@@ -121,14 +122,14 @@ export default function EditPanel({ draft, onClose, onSave }) {
         </div>
       ) : (
         <input
-          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 caret-zinc-900"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={draft.type === "image" ? "https://... or /uploads/..." : ""}
           style={
             draft.type === "text"
               ? {
-                  color: color || "#14201c",
+                  color: "#18181b",
                   fontSize: fontSize || undefined,
                   fontWeight: fontWeight || undefined,
                 }

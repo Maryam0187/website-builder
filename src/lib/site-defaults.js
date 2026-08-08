@@ -397,12 +397,17 @@ export function normalizeSiteContent(content) {
         showForm: contactRest.showForm !== false,
       };
     }
+    const includeDineOs = templateIncludesDineOs(template);
+    // Hide DineOS from nav while the section is disabled (page data can remain)
+    const filteredNav = includeDineOs
+      ? nav
+      : nav.filter((item) => item.pageId !== "dineos");
     return {
       ...content,
       pages,
       template,
       layout: content.layout === "multi-page" ? "multi-page" : "one-page",
-      nav,
+      nav: filteredNav,
       styles: content.styles || {},
       theme: { ...DEFAULT_THEME, ...(content.theme || {}) },
       features: {
@@ -410,6 +415,7 @@ export function normalizeSiteContent(content) {
         notifications: false,
         commerce: Boolean(getTemplate(template).commerce),
         ...(content.features || {}),
+        dineOs: includeDineOs,
       },
     };
   }
