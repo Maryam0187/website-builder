@@ -16,6 +16,7 @@ export const TEMPLATE_IDS = [
   "events",
   "nonprofit",
   "company",
+  "perfume",
   "other",
 ];
 
@@ -33,6 +34,8 @@ export const BUSINESS_TYPE_TO_TEMPLATE = {
   events: "events",
   nonprofit: "nonprofit",
   company: "company",
+  perfume: "perfume",
+  fragrance: "perfume",
   other: "other",
 };
 
@@ -645,6 +648,61 @@ export const TEMPLATE_CATALOG = {
       { caption: "Workshop", image: img("photo-1552664730-d307ca884978") },
       { caption: "Client call", image: img("photo-1600880292203-757bb62b4baf") },
       { caption: "Launch board", image: img("photo-1454165804606-c3d57bc86b40") },
+    ],
+  },
+  perfume: {
+    id: "perfume",
+    label: "Perfume / fragrance",
+    description: "Premium atelier layout — dark champagne tones and scent-story sections.",
+    commerce: true,
+    layoutStyle: "atelier",
+    theme: {
+      primary: "#c4a574",
+      accent: "#0c0a09",
+      text: "#f5f0e8",
+      muted: "#a8a29e",
+    },
+    tagline: "Scent as signature",
+    hero: {
+      headline: (name) => name,
+      subheadline:
+        "Discover refined fragrances crafted for lasting presence — explore the collection or book a private scent consultation.",
+      cta: "Explore scents",
+      image: img("photo-1774682060992-46c7e9f2e50b", 2000),
+    },
+    aboutImage: img("photo-1774682060910-ba9a26f958ad", 2000),
+    contactImage: img("photo-1557170334-a9632e77c6e4", 2000),
+    aboutBody: (name) =>
+      `${name} is a fragrance house for those who choose scent with intention. Share your craft story, signature notes, and how clients discover their next bottle.`,
+    menuLabel: "Collection",
+    menuItems: [
+      {
+        name: "Noir Velvet",
+        price: "$148",
+        note: "Amber · oud · soft musk",
+        image: img("photo-1595425970377-c9703cf48b6d"),
+      },
+      {
+        name: "Citrus Atelier",
+        price: "$128",
+        note: "Bergamot · neroli · cedar",
+        image: img("photo-1547887538-e3a2f32cb1cc"),
+      },
+      {
+        name: "Silk Garden",
+        price: "$158",
+        note: "Rose · iris · white tea",
+        image: img("photo-1571875257727-256c39da42af"),
+      },
+    ],
+    galleryLabel: "Mood & craft",
+    galleryImages: [
+      { caption: "Glass on dark", image: img("photo-1774682060992-46c7e9f2e50b") },
+      { caption: "Quiet bottle", image: img("photo-1774682060910-ba9a26f958ad") },
+      { caption: "Soft gold", image: img("photo-1595425970377-c9703cf48b6d") },
+      { caption: "Evening pour", image: img("photo-1557170334-a9632e77c6e4") },
+      { caption: "Studio light", image: img("photo-1547887538-e3a2f32cb1cc") },
+      { caption: "Signature set", image: img("photo-1585386959984-a4155224a1ad") },
     ],
   },
   other: {

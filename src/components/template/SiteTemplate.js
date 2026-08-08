@@ -15,6 +15,7 @@ import {
   MarqueeLayout,
   CauseLayout,
   LaunchLayout,
+  AtelierLayout,
 } from "./layouts/NicheLayouts";
 import { getLayoutStyle } from "@/lib/templates";
 
@@ -31,6 +32,7 @@ const LAYOUT_COMPONENTS = {
   marquee: MarqueeLayout,
   cause: CauseLayout,
   launch: LaunchLayout,
+  atelier: AtelierLayout,
 };
 
 /** Picks a distinct single-page layout from the site’s template. */

@@ -17,6 +17,7 @@ const SAMPLE_NAMES = {
   events: "Afterglow Venue",
   nonprofit: "Open Hands Project",
   company: "Pulse Labs",
+  perfume: "Maison Lumière",
   other: "Neighborhood Co.",
 };
 

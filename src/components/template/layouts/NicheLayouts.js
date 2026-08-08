@@ -1281,3 +1281,254 @@ export function LaunchLayout(props) {
     />
   );
 }
+
+
+/** Perfume — premium fragrance atelier */
+export function AtelierLayout(props) {
+  return (
+    <TemplateChrome
+      {...props}
+      overlayNav
+      navWide
+      footerClassName="border-t border-white/10 px-6 py-10 text-center text-sm tracking-wide text-white/55"
+      renderSection={({ pageType, page, pageId, ...ctx }) => {
+        if (pageType === "home") {
+          const hero = page.hero || {};
+          return (
+            <section id="home" className="relative -mt-[5.5rem] min-h-[100svh] overflow-hidden">
+              <ParallaxMedia
+                src={hero.image}
+                strength={0.22}
+                className="absolute inset-0"
+                imgClassName="tpl-parallax-hero object-[center_35%]"
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0c0a09] via-[#0c0a09]/45 to-[#0c0a09]/20" />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_35%,rgba(196,165,116,0.14),transparent_55%)]" />
+              <div className="relative mx-auto flex min-h-[100svh] max-w-6xl flex-col items-center justify-end px-6 pb-24 pt-32 text-center text-[#f5f0e8]">
+                <p
+                  className="tpl-fade-up text-[11px] font-semibold uppercase tracking-[0.42em]"
+                  style={{ color: ctx.theme.primary }}
+                >
+                  Fragrance atelier
+                </p>
+                <span
+                  className="tpl-fade-up tpl-fade-up-delay-1 mt-5 block h-px w-16"
+                  style={{ background: ctx.theme.primary }}
+                />
+                <h1
+                  className={`tpl-fade-up tpl-fade-up-delay-1 mt-6 max-w-3xl font-[family-name:var(--font-display)] text-5xl font-semibold tracking-tight md:text-7xl ${ctx.editable()}`}
+                  onClick={() =>
+                    ctx.handle("pages.home.hero.headline", "Hero headline", "text", "#f5f0e8")
+                  }
+                >
+                  {hero.headline}
+                </h1>
+                <p
+                  className={`tpl-fade-up tpl-fade-up-delay-2 mt-6 max-w-lg text-base leading-8 text-[#f5f0e8]/80 md:text-lg ${ctx.editable()}`}
+                  onClick={() =>
+                    ctx.handle("pages.home.hero.subheadline", "Hero subheadline", "text", "#f5f0e8")
+                  }
+                >
+                  {hero.subheadline}
+                </p>
+                <a
+                  href="#menu"
+                  className="tpl-fade-up tpl-fade-up-delay-3 mt-10 inline-flex rounded-sm border px-8 py-3.5 text-xs font-semibold uppercase tracking-[0.22em] transition hover:bg-white/5"
+                  style={{ borderColor: ctx.theme.primary, color: ctx.theme.primary }}
+                  onClick={(e) => {
+                    if (ctx.editMode) {
+                      e.preventDefault();
+                      ctx.handle("pages.home.hero.cta", "Button text", "text", "#f5f0e8");
+                    }
+                  }}
+                >
+                  {hero.cta}
+                </a>
+                {ctx.editMode && (
+                  <button
+                    type="button"
+                    className="mt-5 text-xs text-white/70 underline"
+                    onClick={() => ctx.handle("pages.home.hero.image", "Hero image URL", "image")}
+                  >
+                    Change hero background image
+                  </button>
+                )}
+              </div>
+            </section>
+          );
+        }
+        if (pageType === "about") {
+          const base = `pages.${pageId}`;
+          return (
+            <section id={pageId} className="px-6 py-24 text-[#f5f0e8]">
+              <div className="mx-auto grid max-w-6xl items-center gap-14 md:grid-cols-12">
+                <button
+                  type="button"
+                  className={`aspect-[3/4] overflow-hidden md:col-span-5 ${ctx.editable()}`}
+                  onClick={() => ctx.handle(`${base}.image`, "About image URL", "image")}
+                >
+                  <ParallaxMedia src={page.image} strength={0.16} className="h-full w-full" />
+                </button>
+                <Reveal className="md:col-span-7 md:pl-6">
+                  <p
+                    className="text-[11px] font-semibold uppercase tracking-[0.35em]"
+                    style={{ color: ctx.theme.primary }}
+                  >
+                    Our craft
+                  </p>
+                  <h1
+                    className={`mt-4 font-[family-name:var(--font-display)] text-4xl font-semibold md:text-5xl ${ctx.editable()}`}
+                    onClick={() => ctx.handle(`${base}.title`, "About title", "text", "#f5f0e8")}
+                  >
+                    {page.title}
+                  </h1>
+                  <p
+                    className={`mt-6 max-w-xl text-lg leading-8 text-[#f5f0e8]/75 ${ctx.editable()}`}
+                    onClick={() => ctx.handle(`${base}.body`, "About text", "textarea", "#f5f0e8")}
+                  >
+                    {page.body}
+                  </p>
+                </Reveal>
+              </div>
+            </section>
+          );
+        }
+        if (pageType === "menu") {
+          const base = `pages.${pageId}`;
+          const items = page.items || [];
+          return (
+            <section id={pageId} className="px-6 py-24 text-[#f5f0e8]">
+              <div className="mx-auto max-w-6xl">
+                <Reveal>
+                  <p
+                    className="text-[11px] font-semibold uppercase tracking-[0.35em]"
+                    style={{ color: ctx.theme.primary }}
+                  >
+                    Signature scents
+                  </p>
+                  <h1
+                    className={`mt-3 font-[family-name:var(--font-display)] text-4xl font-semibold md:text-5xl ${ctx.editable()}`}
+                    onClick={() =>
+                      ctx.handle(`${base}.title`, "Collection title", "text", "#f5f0e8")
+                    }
+                  >
+                    {page.title}
+                  </h1>
+                </Reveal>
+                <div className="mt-14 grid gap-10 md:grid-cols-3">
+                  {items.map((item, index) => (
+                    <Reveal key={index} delay={index * 90}>
+                      <article className="group">
+                        <button
+                          type="button"
+                          className={`relative aspect-[3/4] w-full overflow-hidden ${ctx.editable()}`}
+                          onClick={() =>
+                            ctx.handle(`${base}.items.${index}.image`, "Scent image", "image")
+                          }
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={item.image}
+                            alt=""
+                            className="tpl-img-zoom h-full w-full object-cover"
+                          />
+                          <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-80" />
+                        </button>
+                        <div className="mt-5 space-y-2 border-t border-white/10 pt-4">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <h2
+                              className={`font-[family-name:var(--font-display)] text-2xl font-semibold ${ctx.editable()}`}
+                              onClick={() =>
+                                ctx.handle(
+                                  `${base}.items.${index}.title`,
+                                  "Scent name",
+                                  "text",
+                                  "#f5f0e8",
+                                )
+                              }
+                            >
+                              {item.title}
+                            </h2>
+                            {item.price ? (
+                              <span className="text-sm" style={{ color: ctx.theme.primary }}>
+                                {item.price}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p
+                            className={`text-sm leading-6 text-[#f5f0e8]/65 ${ctx.editable()}`}
+                            onClick={() =>
+                              ctx.handle(
+                                `${base}.items.${index}.description`,
+                                "Notes & details",
+                                "textarea",
+                                "#f5f0e8",
+                              )
+                            }
+                          >
+                            {item.description}
+                          </p>
+                          {page.commerce ? (
+                            <button
+                              type="button"
+                              className="mt-3 text-xs font-semibold uppercase tracking-[0.2em]"
+                              style={{ color: ctx.theme.primary }}
+                              onClick={ctx.onCommerceClick}
+                            >
+                              Inquire to order
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    </Reveal>
+                  ))}
+                </div>
+              </div>
+            </section>
+          );
+        }
+        if (pageType === "gallery") {
+          const base = `pages.${pageId}`;
+          const items = page.items || [];
+          return (
+            <section id={pageId} className="px-6 py-24 text-[#f5f0e8]">
+              <div className="mx-auto max-w-6xl">
+                <Reveal>
+                  <h1
+                    className={`font-[family-name:var(--font-display)] text-4xl font-semibold ${ctx.editable()}`}
+                    onClick={() => ctx.handle(`${base}.title`, "Gallery title", "text", "#f5f0e8")}
+                  >
+                    {page.title}
+                  </h1>
+                </Reveal>
+                <div className="mt-12 columns-1 gap-4 sm:columns-2 md:columns-3">
+                  {items.map((item, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className={`mb-4 block w-full break-inside-avoid overflow-hidden ${ctx.editable()}`}
+                      onClick={() =>
+                        ctx.handle(`${base}.items.${index}.image`, "Gallery image URL", "image")
+                      }
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={item.image} alt="" className="tpl-img-zoom w-full object-cover" />
+                      {item.caption ? (
+                        <span className="mt-2 block text-left text-xs uppercase tracking-[0.18em] text-[#f5f0e8]/55">
+                          {item.caption}
+                        </span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+          );
+        }
+        if (pageType === "contact")
+          return <ContactSection page={page} pageId={pageId} {...ctx} />;
+        return fallbackSection(pageType, { page, pageId, ...ctx });
+      }}
+    />
+  );
+}

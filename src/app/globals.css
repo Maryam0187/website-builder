@@ -198,7 +198,8 @@ body {
 
 [data-layout="folio"] .tpl-fade-up,
 [data-layout="marquee"] .tpl-fade-up,
-[data-layout="launch"] .tpl-fade-up {
+[data-layout="launch"] .tpl-fade-up,
+[data-layout="atelier"] .tpl-fade-up {
   animation-duration: 1.05s;
 }
 

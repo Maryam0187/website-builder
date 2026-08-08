@@ -31,6 +31,7 @@ export function getOnboardingPrompt(step) {
           { value: "events", label: "Events / venues" },
           { value: "nonprofit", label: "Nonprofit / cause" },
           { value: "company", label: "Company / landing" },
+          { value: "perfume", label: "Perfume / fragrance" },
           { value: "other", label: "Other" },
         ],
       };
