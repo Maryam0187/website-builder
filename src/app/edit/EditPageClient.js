@@ -292,12 +292,11 @@ export default function EditPageClient() {
       />
 
       <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-950">
-        Tip: change words and photos yourself. Need another section in the menu? Open{" "}
+        Tip: change words and photos yourself. Need more in the menu? Open{" "}
         <button type="button" className="font-semibold underline" onClick={() => setShowMessages(true)}>
           Ask for UI changes
         </button>{" "}
-        — we&apos;ll add it to your navbar
-        {onePage ? " (same scrolling page)" : ""}.
+        — we can add it to your navbar, create a new page, or link any section to a new page.
       </div>
 
       <SiteTemplate
