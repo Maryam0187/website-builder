@@ -156,6 +156,82 @@ export async function sendChatLinkEmail({ to, name, accessToken }) {
   return sendEmail({ to, subject, html, text });
 }
 
+/** Password reset link email. */
+export async function sendPasswordResetEmail({ to, name, resetUrl }) {
+  const base = appUrl();
+  const logoUrl = `${base}/email-logo.png`;
+  const siteUrl = AGENCY_URL();
+  const subject = "Reset your Easy Website password";
+  const greetingName = escapeHtml(name || "there");
+  const safeUrl = escapeHtml(resetUrl);
+
+  const text = [
+    `Hi ${name || "there"},`,
+    ``,
+    `We received a request to reset your Easy Website password.`,
+    `Open this link within 2 hours to choose a new password:`,
+    ``,
+    resetUrl,
+    ``,
+    `If you didn’t ask for this, you can ignore this email — your password stays the same.`,
+    ``,
+    `— ${COMPANY_NAME}`,
+    COMPANY_TAGLINE,
+    siteUrl,
+  ].join("\n");
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
+<body style="margin:0;padding:0;background:#eef2f7;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef2f7;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px rgba(4,11,26,0.08);">
+          <tr>
+            <td style="height:4px;background:linear-gradient(90deg,#0891b2,#2563eb);font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="padding:28px 32px 8px;text-align:center;">
+              <img src="${logoUrl}" alt="${COMPANY_NAME}" width="140" style="display:inline-block;max-width:140px;height:auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 32px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;">
+              <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;">Reset your password</h1>
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">Hi ${greetingName},</p>
+              <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#334155;">
+                We received a request to reset your Easy Website password. This link expires in 2 hours.
+              </p>
+              <p style="margin:0 0 24px;text-align:center;">
+                <a href="${safeUrl}" style="display:inline-block;background:linear-gradient(90deg,#0891b2,#2563eb);color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 22px;border-radius:999px;">
+                  Choose a new password
+                </a>
+              </p>
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">
+                If the button doesn’t work, paste this link into your browser:<br />
+                <a href="${safeUrl}" style="color:#0891b2;word-break:break-all;">${safeUrl}</a>
+              </p>
+              <p style="margin:20px 0 0;font-size:13px;line-height:1.6;color:#64748b;">
+                If you didn’t ask for this, ignore this email — your password stays the same.
+              </p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:20px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:11px;line-height:1.5;color:#8a97a3;">
+          ${escapeHtml(COMPANY_TAGLINE)} · <a href="${siteUrl}" style="color:#64748b;">${escapeHtml(siteUrl)}</a>
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  return sendEmail({ to, subject, html, text });
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")

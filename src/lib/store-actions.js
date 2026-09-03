@@ -779,6 +779,144 @@ export async function listSites() {
   return rows.map((row) => withNormalizedContent(mapSite(row)));
 }
 
+export async function countSitesByOwner(ownerId) {
+  const id = toInt(ownerId);
+  if (id == null) return 0;
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS c FROM sites WHERE owner_id = $1`,
+    [id],
+  );
+  return Number(rows[0]?.c) || 0;
+}
+
+export async function listSitesByOwner(ownerId) {
+  const id = toInt(ownerId);
+  if (id == null) return [];
+  const { rows } = await query(
+    `SELECT * FROM sites WHERE owner_id = $1 ORDER BY updated_at DESC, id DESC`,
+    [id],
+  );
+  return rows.map((row) => withNormalizedContent(mapSite(row)));
+}
+
+export function isSiteLive(site) {
+  const status = String(site?.status || "").toLowerCase();
+  return status === "live" || status === "published";
+}
+
+export async function countLiveSitesByOwner(ownerId) {
+  const id = toInt(ownerId);
+  if (id == null) return 0;
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS c
+     FROM sites
+     WHERE owner_id = $1 AND lower(status) IN ('live', 'published')`,
+    [id],
+  );
+  return Number(rows[0]?.c) || 0;
+}
+
+export async function setSiteLiveStatus(siteId, live) {
+  const id = toInt(siteId);
+  if (id == null) throw new Error("Site not found");
+  const next = live ? "live" : "draft";
+  const { rowCount } = await query(
+    `UPDATE sites SET status = $2, updated_at = now() WHERE id = $1`,
+    [id, next],
+  );
+  if (!rowCount) throw new Error("Site not found");
+  return getSiteById(id);
+}
+
+/** True when an owner may edit/preview this site (any of their slots, not only active). */
+export function ownerOwnsSite(user, site) {
+  if (!user || !site) return false;
+  if (user.role === "admin") return true;
+  if (user.role !== "owner") return false;
+  return Number(site.ownerId) === Number(user.id);
+}
+
+export async function setActiveSiteForOwner(ownerId, siteId) {
+  const oid = toInt(ownerId);
+  const sid = toInt(siteId);
+  if (oid == null || sid == null) throw new Error("Invalid site");
+
+  const site = await getSiteById(sid);
+  if (!site || Number(site.ownerId) !== oid) {
+    throw new Error("Site not found");
+  }
+
+  const { rowCount } = await query(
+    `UPDATE users SET site_id = $2 WHERE id = $1 AND role = 'owner'`,
+    [oid, sid],
+  );
+  if (!rowCount) throw new Error("Owner not found");
+  return site;
+}
+
+/**
+ * Create an additional website for an existing owner (uses site_slots).
+ * Sets the new site as the active editor site.
+ */
+export async function createOwnerSite(ownerId, { brandName, template } = {}) {
+  const oid = toInt(ownerId);
+  if (oid == null) throw new Error("Owner not found");
+
+  const userRes = await query(`SELECT * FROM users WHERE id = $1 AND role = 'owner'`, [oid]);
+  const owner = userRes.rows[0];
+  if (!owner) throw new Error("Owner not found");
+
+  const slots = Math.min(2, Math.max(1, Number(owner.site_slots) || 1));
+  const used = await countSitesByOwner(oid);
+  if (slots <= 1) {
+    throw new Error(
+      "Pay for +1 Website in Profile first. After payment succeeds you can create one extra site.",
+    );
+  }
+  if (used >= slots) {
+    throw new Error(
+      `Website slot limit reached (${used}/${slots}). You can add one extra site after a successful payment.`,
+    );
+  }
+
+  const name =
+    String(brandName || "").trim() ||
+    `Website ${used + 1}`;
+  const baseSlug = slugify(name) || "website";
+  let slug = baseSlug;
+  let i = 1;
+  while (true) {
+    const slugCheck = await query(`SELECT id FROM sites WHERE slug = $1`, [slug]);
+    if (!slugCheck.rows.length) break;
+    slug = `${baseSlug}-${i++}`;
+  }
+
+  const resolvedTemplate = resolveTemplateId(template || "other");
+  const content = normalizeSiteContent(
+    createDefaultSiteContent({
+      brandName: name,
+      address: "",
+      layout: "one-page",
+      template: resolvedTemplate,
+      businessType: resolvedTemplate,
+    }),
+  );
+
+  return withTransaction(async (client) => {
+    const siteRes = await client.query(
+      `INSERT INTO sites (slug, conversation_id, owner_id, status, content)
+       VALUES ($1, NULL, $2, 'draft', $3::jsonb)
+       RETURNING *`,
+      [slug, oid, JSON.stringify(content)],
+    );
+    const site = withNormalizedContent(mapSite(siteRes.rows[0]));
+
+    await client.query(`UPDATE users SET site_id = $2 WHERE id = $1`, [oid, site.id]);
+
+    return site;
+  });
+}
+
 export async function deleteSite(siteId) {
   const id = toInt(siteId);
   if (id == null) throw new Error("Site not found");
@@ -793,11 +931,38 @@ export async function deleteSite(siteId) {
       [id],
     );
 
-    // Delete owner login(s); sessions cascade via FK
-    await client.query(
-      `DELETE FROM users WHERE role = 'owner' AND (id = $1 OR site_id = $2)`,
-      [site.ownerId, id],
-    );
+    const ownerId = site.ownerId;
+    let otherSites = 0;
+    if (ownerId != null) {
+      const countRes = await client.query(
+        `SELECT COUNT(*)::int AS c FROM sites WHERE owner_id = $1 AND id <> $2`,
+        [ownerId, id],
+      );
+      otherSites = Number(countRes.rows[0]?.c) || 0;
+
+      if (otherSites > 0) {
+        // Keep the owner account; point active site at another owned site if needed
+        await client.query(
+          `UPDATE users
+           SET site_id = (
+             SELECT id FROM sites
+             WHERE owner_id = $1 AND id <> $2
+             ORDER BY updated_at DESC
+             LIMIT 1
+           )
+           WHERE id = $1 AND role = 'owner' AND (site_id = $2 OR site_id IS NULL)`,
+          [ownerId, id],
+        );
+      } else {
+        // Last site for this owner — remove login (sessions cascade)
+        await client.query(
+          `DELETE FROM users WHERE role = 'owner' AND (id = $1 OR site_id = $2)`,
+          [ownerId, id],
+        );
+      }
+    } else {
+      await client.query(`DELETE FROM users WHERE role = 'owner' AND site_id = $1`, [id]);
+    }
 
     await client.query(`DELETE FROM sites WHERE id = $1`, [id]);
 

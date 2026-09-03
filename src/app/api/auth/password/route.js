@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { changePassword, getCurrentUser } from "@/lib/auth";
+import { changePassword, getCurrentUser, getUserById, publicUser } from "@/lib/auth";
 
 export async function POST(request) {
   const user = await getCurrentUser();
@@ -25,16 +25,10 @@ export async function POST(request) {
 
   try {
     await changePassword(user.id, currentPassword, newPassword);
+    const fresh = await getUserById(user.id);
     return NextResponse.json({
       ok: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        siteId: user.siteId || null,
-        mustChangePassword: false,
-      },
+      user: publicUser(fresh),
     });
   } catch (error) {
     return NextResponse.json({ error: error.message || "Failed to change password" }, { status: 400 });

@@ -326,6 +326,7 @@ export const TEMPLATE_CATALOG = {
     description: "Asymmetric folio layout — name-forward with a bento work grid.",
     commerce: false,
     layoutStyle: "folio",
+    premium: true,
     theme: {
       primary: "#84cc16",
       accent: "#0a0a0a",
@@ -381,6 +382,7 @@ export const TEMPLATE_CATALOG = {
     description: "Cinematic property showcase with parallax hero and listing cards.",
     commerce: false,
     layoutStyle: "estate",
+    premium: true,
     theme: {
       primary: "#c9a227",
       accent: "#0b1426",
@@ -436,6 +438,7 @@ export const TEMPLATE_CATALOG = {
     description: "Mentor-focus layout with portrait hero and program rows.",
     commerce: false,
     layoutStyle: "mentor",
+    premium: true,
     theme: {
       primary: "#0f766e",
       accent: "#10201c",
@@ -491,6 +494,7 @@ export const TEMPLATE_CATALOG = {
     description: "Night marquee energy with a schedule-style offer list.",
     commerce: true,
     layoutStyle: "marquee",
+    premium: true,
     theme: {
       primary: "#fb7185",
       accent: "#09090b",
@@ -546,6 +550,7 @@ export const TEMPLATE_CATALOG = {
     description: "Story-band cause layout with warm impact photography.",
     commerce: false,
     layoutStyle: "cause",
+    premium: true,
     theme: {
       primary: "#0e7490",
       accent: "#f0f9ff",
@@ -601,6 +606,7 @@ export const TEMPLATE_CATALOG = {
     description: "Modern launch landing — alternating feature bands and crisp CTAs.",
     commerce: false,
     layoutStyle: "launch",
+    premium: true,
     theme: {
       primary: "#0891b2",
       accent: "#020617",
@@ -656,6 +662,7 @@ export const TEMPLATE_CATALOG = {
     description: "Premium atelier layout — dark champagne tones and scent-story sections.",
     commerce: true,
     layoutStyle: "atelier",
+    premium: true,
     theme: {
       primary: "#c4a574",
       accent: "#0c0a09",
@@ -785,6 +792,7 @@ export function listTemplates() {
       description: t.description,
       commerce: t.commerce,
       dineOs: Boolean(t.dineOs),
+      premium: Boolean(t.premium),
       layoutStyle: t.layoutStyle,
       theme: t.theme,
       heroImage: typeof t.hero?.image === "string" ? t.hero.image : "",

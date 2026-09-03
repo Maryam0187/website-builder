@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import SiteNav from "./SiteNav";
 import CommerceContactModal from "./CommerceContactModal";
 import { createTemplateHandlers } from "./template-helpers";
@@ -101,12 +101,16 @@ export default function TemplateChrome({
         ? navOrder.map((id) => {
             const section = normalized.pages[id];
             const type = section.type || id;
-            return renderSection({
-              pageType: type,
-              page: section,
-              pageId: id,
-              ...sectionProps,
-            });
+            return (
+              <Fragment key={id}>
+                {renderSection({
+                  pageType: type,
+                  page: section,
+                  pageId: id,
+                  ...sectionProps,
+                })}
+              </Fragment>
+            );
           })
         : renderSection({
             pageType,

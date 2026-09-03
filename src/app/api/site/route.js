@@ -1,13 +1,23 @@
 import { NextResponse } from "next/server";
-import { denyIfMustChangePassword, requireUser } from "@/lib/auth";
+import {
+  denyIfMustChangePassword,
+  getUserById,
+  publicUser,
+  requireUser,
+} from "@/lib/auth";
 import {
   createDraftFromConversation,
+  createOwnerSite,
   addMessage,
   deleteSite,
   getSiteById,
   listSites,
+  listSitesByOwner,
+  ownerOwnsSite,
+  setActiveSiteForOwner,
   updateSiteContent,
 } from "@/lib/store-actions";
+import { setOwnerSiteLive } from "@/lib/billing";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -23,7 +33,7 @@ export async function GET(request) {
     const { getSiteBySlug } = await import("@/lib/store-actions");
     const site = await getSiteBySlug(slug);
     if (!site) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (user.role === "owner" && site.id !== user.siteId) {
+    if (user.role === "owner" && !ownerOwnsSite(user, site)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.json({ site });
@@ -37,7 +47,7 @@ export async function GET(request) {
   if (siteId) {
     const site = await getSiteById(siteId);
     if (!site) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (user.role === "owner" && site.id !== user.siteId) {
+    if (user.role === "owner" && !ownerOwnsSite(user, site)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.json({ site });
@@ -47,15 +57,100 @@ export async function GET(request) {
     return NextResponse.json({ sites: await listSites() });
   }
 
-  const site = await getSiteById(user.siteId);
-  return NextResponse.json({ sites: site ? [site] : [] });
+  const sites = await listSitesByOwner(user.id);
+  return NextResponse.json({
+    sites,
+    activeSiteId: user.siteId || null,
+  });
 }
 
 export async function POST(request) {
+  const body = await request.json().catch(() => ({}));
+  const action = String(body.action || "").trim();
+
+  // Owner: create / switch / go-live / take-offline
+  if (
+    action === "create-site" ||
+    action === "switch-site" ||
+    action === "go-live" ||
+    action === "take-offline" ||
+    action === "rename-site"
+  ) {
+    const user = await requireUser(["owner"]);
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const blocked = denyIfMustChangePassword(user);
+    if (blocked) return blocked;
+
+    try {
+      if (action === "create-site") {
+        const site = await createOwnerSite(user.id, {
+          brandName: body.brandName,
+          template: body.template,
+        });
+        const fresh = publicUser(await getUserById(user.id));
+        const sites = await listSitesByOwner(user.id);
+        return NextResponse.json({
+          site,
+          user: fresh,
+          sites,
+          message: "New website created. You can switch templates on this site anytime.",
+        });
+      }
+
+      if (action === "go-live" || action === "take-offline") {
+        const siteId = body.siteId;
+        if (!siteId) {
+          return NextResponse.json({ error: "siteId required" }, { status: 400 });
+        }
+        const result = await setOwnerSiteLive(user.id, siteId, action === "go-live");
+        const sites = await listSitesByOwner(user.id);
+        return NextResponse.json({ ...result, sites });
+      }
+
+      if (action === "rename-site") {
+        const siteId = body.siteId;
+        const brandName = String(body.brandName || body.name || "").trim();
+        if (!siteId) {
+          return NextResponse.json({ error: "siteId required" }, { status: 400 });
+        }
+        if (!brandName || brandName.length < 2) {
+          return NextResponse.json({ error: "Website name must be at least 2 characters" }, { status: 400 });
+        }
+        const site = await getSiteById(siteId);
+        if (!site || !ownerOwnsSite(user, site)) {
+          return NextResponse.json({ error: "Site not found" }, { status: 404 });
+        }
+        const content = structuredClone(site.content || {});
+        if (!content.brand || typeof content.brand !== "object") content.brand = {};
+        content.brand.name = brandName;
+        const updated = await updateSiteContent(siteId, content);
+        const sites = await listSitesByOwner(user.id);
+        return NextResponse.json({
+          site: updated,
+          sites,
+          message: "Website name updated",
+        });
+      }
+
+      const siteId = body.siteId;
+      if (!siteId) {
+        return NextResponse.json({ error: "siteId required" }, { status: 400 });
+      }
+      const site = await setActiveSiteForOwner(user.id, siteId);
+      const fresh = publicUser(await getUserById(user.id));
+      const sites = await listSitesByOwner(user.id);
+      return NextResponse.json({ site, user: fresh, sites, message: "Switched website." });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error.message || "Site action failed" },
+        { status: 400 },
+      );
+    }
+  }
+
   const user = await requireUser(["admin"]);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json();
   const conversationId = body.conversationId;
   const brandName = String(body.brandName || "").trim();
   const ownerEmail = String(body.ownerEmail || "").trim();
@@ -134,7 +229,7 @@ export async function PUT(request) {
 
   const site = await getSiteById(siteId);
   if (!site) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (user.role === "owner" && site.id !== user.siteId) {
+  if (user.role === "owner" && !ownerOwnsSite(user, site)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

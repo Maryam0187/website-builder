@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import {
-  ensureAdminUser,
-  verifyPassword,
+  completeTotpLogin,
   createSession,
-  getCurrentUser,
+  createTotpLoginToken,
   destroySession,
+  ensureAdminUser,
+  getCurrentUser,
   getUserByEmail,
+  isTotpRemembered,
+  publicUser,
+  verifyPassword,
 } from "@/lib/auth";
 
 export async function GET() {
@@ -15,7 +19,17 @@ export async function GET() {
 
 export async function POST(request) {
   await ensureAdminUser();
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
+
+  if (body.totpToken && body.code) {
+    try {
+      const user = await completeTotpLogin(body.totpToken, body.code);
+      return NextResponse.json({ user });
+    } catch (error) {
+      return NextResponse.json({ error: error.message || "Invalid authenticator code" }, { status: 401 });
+    }
+  }
+
   const email = String(body.email || "").toLowerCase().trim();
   const password = String(body.password || "");
 
@@ -28,16 +42,21 @@ export async function POST(request) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
+  if (user.totpEnabled && user.totpSecret) {
+    if (user.totpAskLife !== "every" && (await isTotpRemembered(user.id))) {
+      await createSession(user.id);
+      return NextResponse.json({ user: publicUser(user) });
+    }
+    return NextResponse.json({
+      requires2fa: true,
+      totpToken: createTotpLoginToken(user.id),
+      message: "Enter the 6-digit code from Google Authenticator.",
+    });
+  }
+
   await createSession(user.id);
   return NextResponse.json({
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      siteId: user.siteId || null,
-      mustChangePassword: Boolean(user.mustChangePassword),
-    },
+    user: publicUser(user),
   });
 }
 

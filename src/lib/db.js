@@ -53,18 +53,52 @@ export async function withTransaction(fn) {
   }
 }
 
+let billingColumnsReady = null;
+
+/** Additive columns — runs once per process after base schema (covers hot-reload gaps). */
+async function ensureBillingColumns() {
+  if (billingColumnsReady) return billingColumnsReady;
+  billingColumnsReady = getPool()
+    .query(
+      `
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'free';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'none';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_used BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS site_slots INT NOT NULL DEFAULT 1;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_pending_secret TEXT NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_ask_life TEXT NOT NULL DEFAULT 'every';
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'domain';
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS stripe_session_id TEXT NULL;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS addon_id TEXT NULL;
+  `,
+    )
+    .catch((error) => {
+      billingColumnsReady = null;
+      throw error;
+    });
+  return billingColumnsReady;
+}
+
 /** Safety net if migrate wasn't run; source of truth is src/lib/schema.sql */
 export async function ensureSchema() {
-  if (schemaReady) return schemaReady;
-  schemaReady = (async () => {
-    const sqlPath = path.join(process.cwd(), "src/lib/schema.sql");
-    const sql = await fs.readFile(sqlPath, "utf8");
-    await getPool().query(sql);
-  })().catch((error) => {
-    schemaReady = null;
-    throw error;
-  });
-  return schemaReady;
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      const sqlPath = path.join(process.cwd(), "src/lib/schema.sql");
+      const sql = await fs.readFile(sqlPath, "utf8");
+      await getPool().query(sql);
+    })().catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
+  }
+  await schemaReady;
+  await ensureBillingColumns();
 }
 
 /** Random token for cookies / chat links (not a DB primary key). */

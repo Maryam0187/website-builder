@@ -3,11 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import AdminAddPageForm from "./AdminAddPageForm";
+import AdminOwnerPaymentForm from "./AdminOwnerPaymentForm";
 import { getTemplate, listTemplates } from "@/lib/templates";
 
 export default function AdminSitesList({ initialSites = [] }) {
   const [sites, setSites] = useState(initialSites);
   const [openId, setOpenId] = useState(null);
+  const [paymentOpenId, setPaymentOpenId] = useState(null);
   const [busy, setBusy] = useState(null);
   const [status, setStatus] = useState("");
   const templates = listTemplates();
@@ -182,10 +184,23 @@ export default function AdminSitesList({ initialSites = [] }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOpenId((id) => (id === site.id ? null : site.id))}
+                    onClick={() => {
+                      setOpenId((id) => (id === site.id ? null : site.id));
+                      setPaymentOpenId(null);
+                    }}
                     className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/15"
                   >
                     {openId === site.id ? "Close" : "Add section"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentOpenId((id) => (id === site.id ? null : site.id));
+                      setOpenId(null);
+                    }}
+                    className="rounded-full border border-amber-300/35 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/15"
+                  >
+                    {paymentOpenId === site.id ? "Close" : "Payment"}
                   </button>
                   <button
                     type="button"
@@ -204,6 +219,9 @@ export default function AdminSitesList({ initialSites = [] }) {
                   existingPageIds={pageIds}
                   onAdded={(updated) => handleAdded(site.id, updated)}
                 />
+              )}
+              {paymentOpenId === site.id && (
+                <AdminOwnerPaymentForm ownerId={site.ownerId} />
               )}
             </li>
           );

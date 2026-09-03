@@ -1,0 +1,63 @@
+import { NextResponse } from "next/server";
+import { getStripe, isStripeConfigured } from "@/lib/stripe";
+import {
+  applyAddonCheckoutSession,
+  applyCheckoutSession,
+  applyStripeSubscription,
+} from "@/lib/billing";
+
+export const runtime = "nodejs";
+
+export async function POST(request) {
+  if (!isStripeConfigured()) {
+    return NextResponse.json({ error: "Stripe not configured" }, { status: 503 });
+  }
+
+  const webhookSecret = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+  const stripe = getStripe();
+  const body = await request.text();
+  const signature = request.headers.get("stripe-signature");
+
+  let event;
+  try {
+    if (webhookSecret && signature) {
+      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    } else if (process.env.NODE_ENV !== "production") {
+      // Local sandbox without webhook secret — parse JSON (not for production)
+      event = JSON.parse(body);
+    } else {
+      return NextResponse.json({ error: "Missing STRIPE_WEBHOOK_SECRET" }, { status: 400 });
+    }
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Webhook signature error: ${err.message}` },
+      { status: 400 },
+    );
+  }
+
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        if (session.mode === "payment" || session.metadata?.kind === "addon") {
+          await applyAddonCheckoutSession(session);
+        } else if (session.mode === "subscription") {
+          await applyCheckoutSession(session);
+        }
+        break;
+      }
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted": {
+        await applyStripeSubscription(event.data.object);
+        break;
+      }
+      default:
+        break;
+    }
+  } catch (err) {
+    console.error("Stripe webhook handler error:", err);
+    return NextResponse.json({ error: err.message || "Webhook failed" }, { status: 500 });
+  }
+
+  return NextResponse.json({ received: true });
+}

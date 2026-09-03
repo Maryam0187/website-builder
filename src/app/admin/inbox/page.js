@@ -91,9 +91,17 @@ export default function AdminInboxPage() {
       <aside className="flex w-full flex-col border-b border-white/10 bg-[#040b1a] text-white md:w-84 md:max-w-sm md:border-r md:border-b-0 md:w-[22rem]">
         <div className="border-b border-white/10 px-5 py-4">
           <BrandLogo href="/admin" subtitle="Inbox" compact />
-          <Link href="/admin" className="mt-3 inline-block text-xs font-medium text-cyan-200 hover:underline">
-            ← Dashboard
-          </Link>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Link href="/admin" className="text-xs font-medium text-cyan-200 hover:underline">
+              ← Dashboard
+            </Link>
+            <Link href="/profile" className="text-xs font-medium text-cyan-200 hover:underline">
+              Profile
+            </Link>
+            <Link href="/profile#security" className="text-xs font-medium text-cyan-200 hover:underline">
+              Authenticator (2FA)
+            </Link>
+          </div>
           <p className="mt-2 text-xs text-blue-100">Guest chats and design screenshots</p>
         </div>
         <ul className="max-h-[38vh] flex-1 overflow-y-auto md:max-h-none">

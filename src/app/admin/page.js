@@ -46,6 +46,18 @@ export default async function AdminHomePage() {
             >
               Open inbox
             </Link>
+            <Link
+              href="/profile"
+              className="rounded-full border border-white/15 px-4 py-2 text-sm hover:bg-white/5"
+            >
+              Profile
+            </Link>
+            <Link
+              href="/profile#security"
+              className="rounded-full border border-white/15 px-4 py-2 text-sm hover:bg-white/5"
+            >
+              Authenticator (2FA)
+            </Link>
             <Link href="/" className="hidden rounded-full border border-white/15 px-4 py-2 text-sm sm:inline-flex">
               Product home
             </Link>
