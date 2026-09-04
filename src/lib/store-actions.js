@@ -177,6 +177,92 @@ export async function getConversationByEmail(email) {
 }
 
 /**
+ * Logged-in owner support chat: reuse the signup conversation by email/site,
+ * or create one so Profile → Plan → Contact us can open chat immediately.
+ */
+export async function ensureOwnerConversation(user) {
+  if (!user || user.role !== "owner") {
+    throw new Error("Owner account required");
+  }
+  const email = String(user.email || "").toLowerCase().trim();
+  if (!email) throw new Error("Owner email is required");
+
+  const sites = await listSitesByOwner(user.id);
+  const primarySite =
+    sites.find((s) => toInt(s.id) === toInt(user.siteId)) || sites[0] || null;
+  const brandName =
+    primarySite?.content?.brand?.name || user.name || "My website";
+
+  let conversation = await getConversationByEmail(email);
+
+  if (!conversation && primarySite?.conversationId) {
+    const linked = await getConversation(primarySite.conversationId);
+    conversation = linked?.conversation || null;
+  }
+
+  if (!conversation) {
+    const accessToken = token();
+    const convRes = await query(
+      `INSERT INTO conversations
+        (name, email, website_name, phone, business_type, access_token,
+         email_verified, email_verified_at, bot_onboarded, bot_step, status, site_id)
+       VALUES ($1, $2, $3, '', '', $4, true, now(), true, $5, 'open', $6)
+       RETURNING *`,
+      [
+        user.name || brandName,
+        email,
+        brandName,
+        accessToken,
+        BOT_STEPS.DONE,
+        primarySite?.id ?? null,
+      ],
+    );
+    conversation = mapConversation(convRes.rows[0]);
+    await addMessage({
+      conversationId: conversation.id,
+      sender: "bot",
+      body: `Hi${user.name ? ` ${user.name}` : ""} — ask us about custom services, extra sites, or anything not listed on your plan. We’ll reply here.`,
+      system: false,
+    });
+    if (primarySite && !primarySite.conversationId) {
+      await query(
+        `UPDATE sites SET conversation_id = $2, updated_at = now() WHERE id = $1`,
+        [primarySite.id, conversation.id],
+      );
+    }
+  } else if (primarySite && conversation.siteId == null) {
+    await query(
+      `UPDATE conversations SET site_id = $2, updated_at = now() WHERE id = $1`,
+      [conversation.id, primarySite.id],
+    );
+    if (!primarySite.conversationId) {
+      await query(
+        `UPDATE sites SET conversation_id = $2, updated_at = now() WHERE id = $1`,
+        [primarySite.id, conversation.id],
+      );
+    }
+  }
+
+  return getConversation(conversation.id);
+}
+
+/** Whether an owner may read/write this conversation (email or owned site). */
+export async function ownerCanAccessConversation(user, conversation) {
+  if (!user || user.role !== "owner" || !conversation) return false;
+  const email = String(user.email || "").toLowerCase().trim();
+  const convEmail = String(conversation.email || "").toLowerCase().trim();
+  if (email && convEmail && email === convEmail) return true;
+  if (toInt(conversation.siteId) != null) {
+    const sites = await listSitesByOwner(user.id);
+    if (sites.some((s) => toInt(s.id) === toInt(conversation.siteId))) return true;
+  }
+  if (toInt(user.siteId) != null && toInt(conversation.siteId) === toInt(user.siteId)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * One chat per email. If email exists, append message and return existing token.
  * If new, create conversation.
  */

@@ -17,25 +17,41 @@ export default function MessagesPage() {
   const [onboarding, setOnboarding] = useState(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [mode, setMode] = useState(token ? "guest" : "pending");
 
   const load = useCallback(async () => {
-    if (!token) {
-      setError("Missing conversation link. Start from Message us on the home page.");
+    if (token) {
+      try {
+        localStorage.setItem(GUEST_TOKEN_KEY, token);
+      } catch {
+        /* ignore */
+      }
+      const res = await fetch(`/api/conversations?token=${encodeURIComponent(token)}`);
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error || "Could not load conversation");
+        return;
+      }
+      setMode("guest");
+      setData(json);
+      setOnboarding(json.onboarding || null);
       return;
     }
-    try {
-      localStorage.setItem(GUEST_TOKEN_KEY, token);
-    } catch {
-      /* ignore */
-    }
-    const res = await fetch(`/api/conversations?token=${encodeURIComponent(token)}`);
+
+    const res = await fetch("/api/conversations/mine");
     const json = await res.json();
+    if (res.status === 401) {
+      setError("Sign in to open chat, or use the private link from your email.");
+      setMode("guest");
+      return;
+    }
     if (!res.ok) {
       setError(json.error || "Could not load conversation");
       return;
     }
+    setMode("owner");
     setData(json);
-    setOnboarding(json.onboarding || null);
+    setOnboarding(null);
   }, [token]);
 
   useEffect(() => {
@@ -45,10 +61,12 @@ export default function MessagesPage() {
   }, [load]);
 
   async function send({ body, images }) {
+    const payload = { body, images };
+    if (mode === "guest" && token) payload.token = token;
     const res = await fetch(`/api/conversations/${data.conversation.id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body, images, token }),
+      body: JSON.stringify(payload),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Failed to send");
@@ -75,9 +93,17 @@ export default function MessagesPage() {
       <div className="flex min-h-screen items-center justify-center bg-[#040b1a] px-6 text-white">
         <div className="max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
           <p className="text-red-300">{error}</p>
-          <Link href="/" className="mt-4 inline-block text-cyan-200 underline">
-            Go home
-          </Link>
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <Link href="/login?next=/messages" className="text-cyan-200 underline">
+              Sign in
+            </Link>
+            <Link href="/profile#plan" className="text-cyan-200 underline">
+              Back to plan
+            </Link>
+            <Link href="/" className="text-cyan-200 underline">
+              Go home
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -91,28 +117,46 @@ export default function MessagesPage() {
     );
   }
 
-  const showOnboarding = Boolean(onboarding);
+  const showOnboarding = Boolean(onboarding) && mode === "guest";
+  const isOwner = mode === "owner";
 
   return (
     <div className="flex min-h-screen flex-col bg-[#07122a] text-zinc-900">
       <header className="border-b border-white/10 bg-[#040b1a] px-4 py-4 text-white">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">
           <div>
-            <BrandLogo href="/" subtitle="Guest chat" compact />
+            <BrandLogo
+              href={isOwner ? "/profile#plan" : "/"}
+              subtitle={isOwner ? "Support chat" : "Guest chat"}
+              compact
+            />
             <h1 className="mt-3 font-[family-name:var(--font-display)] text-xl font-semibold">
               {data.conversation.websiteName || data.conversation.name}
             </h1>
             <p className="mt-1 text-xs text-blue-100">
-              {data.conversation.emailVerified ? "Email verified · " : ""}
-              {showOnboarding
-                ? "Answer the assistant questions below — then your sample draft is created."
-                : data.conversation.siteId
-                  ? "Your sample site login is in this chat. Bookmark this link."
-                  : "Bookmark this link or keep the email."}
+              {isOwner
+                ? "Message us about custom services, plans, or anything not listed."
+                : data.conversation.emailVerified
+                  ? "Email verified · "
+                  : ""}
+              {!isOwner &&
+                (showOnboarding
+                  ? "Answer the assistant questions below — then your sample draft is created."
+                  : data.conversation.siteId
+                    ? "Your sample site login is in this chat. Bookmark this link."
+                    : "Bookmark this link or keep the email.")}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {data.conversation.siteId && (
+            {isOwner ? (
+              <Link
+                href="/profile#plan"
+                className="rounded-full border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+              >
+                Back to plan
+              </Link>
+            ) : null}
+            {data.conversation.siteId && !isOwner && (
               <Link
                 href="/login"
                 className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2 text-sm font-semibold"
@@ -120,13 +164,15 @@ export default function MessagesPage() {
                 Login to edit site
               </Link>
             )}
-            <button
-              type="button"
-              onClick={copyLink}
-              className="rounded-full border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
-            >
-              {copied ? "Link copied" : "Copy chat link"}
-            </button>
+            {!isOwner ? (
+              <button
+                type="button"
+                onClick={copyLink}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+              >
+                {copied ? "Link copied" : "Copy chat link"}
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -137,7 +183,11 @@ export default function MessagesPage() {
         ) : (
           <MessageComposer
             onSend={send}
-            placeholder="Message us anytime about design or changes…"
+            placeholder={
+              isOwner
+                ? "Tell us what you need — custom quote, extra sites, design help…"
+                : "Message us anytime about design or changes…"
+            }
           />
         )}
       </div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import PackageFlow from "@/components/billing/PackageFlow";
+import SupportChatSidebar from "@/components/messaging/SupportChatSidebar";
 
 function normalizeSettingsHash(hash) {
   const h = String(hash || "").toLowerCase();
@@ -44,6 +45,7 @@ export default function ProfilePage() {
   const [totpStatus, setTotpStatus] = useState("");
   const [totpBusy, setTotpBusy] = useState(false);
   const [totpAskLife, setTotpAskLife] = useState("every");
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -463,6 +465,15 @@ export default function ProfilePage() {
                 </a>
               );
             })}
+            {user.role === "owner" ? (
+              <button
+                type="button"
+                onClick={() => setShowChat(true)}
+                className="whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium text-cyan-100/90 transition hover:bg-cyan-500/10 hover:text-cyan-50"
+              >
+                Contact us
+              </button>
+            ) : null}
           </nav>
         </aside>
 
@@ -878,6 +889,7 @@ export default function ProfilePage() {
                     busy={billingBusy}
                     message={billingMsg}
                     onAction={billingAction}
+                    onContactUs={() => setShowChat(true)}
                   />
                 </div>
               ) : (
@@ -911,6 +923,10 @@ export default function ProfilePage() {
           ) : null}
         </main>
       </div>
+
+      {user.role === "owner" ? (
+        <SupportChatSidebar open={showChat} onClose={() => setShowChat(false)} />
+      ) : null}
     </div>
   );
 }

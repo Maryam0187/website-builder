@@ -4,6 +4,7 @@ import {
   getConversation,
   getConversationByToken,
   markConversationRead,
+  ownerCanAccessConversation,
 } from "@/lib/store-actions";
 import { denyIfMustChangePassword, requireUser } from "@/lib/auth";
 import { toInt } from "@/lib/db";
@@ -12,6 +13,12 @@ function sameId(a, b) {
   const left = toInt(a);
   const right = toInt(b);
   return left != null && right != null && left === right;
+}
+
+function withoutAccessToken(data) {
+  if (!data?.conversation) return data;
+  const { accessToken: _omit, ...conversation } = data.conversation;
+  return { ...data, conversation };
 }
 
 export async function GET(request, { params }) {
@@ -39,10 +46,10 @@ export async function GET(request, { params }) {
     const blocked = denyIfMustChangePassword(user);
     if (blocked) return blocked;
     const data = await getConversation(id);
-    if (!data || !sameId(data.conversation.siteId, user.siteId)) {
+    if (!data || !(await ownerCanAccessConversation(user, data.conversation))) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    return NextResponse.json(data);
+    return NextResponse.json(withoutAccessToken(data));
   }
 
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -77,7 +84,7 @@ export async function POST(request, { params }) {
     const blocked = denyIfMustChangePassword(user);
     if (blocked) return blocked;
     const data = await getConversation(id);
-    if (!data || !sameId(data.conversation.siteId, user.siteId)) {
+    if (!data || !(await ownerCanAccessConversation(user, data.conversation))) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const message = await addMessage({

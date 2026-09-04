@@ -49,9 +49,6 @@ function normalizeCurrentPlanId(planId) {
 }
 
 const CONTACT_EMAIL = "info@technonaire.com";
-const CONTACT_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-  "Easy Website — other service",
-)}`;
 
 function AddonCard({ item, badge, actionLabel, actionHref, onAction, busy, disabled, current }) {
   const actionClassName =
@@ -111,6 +108,7 @@ export default function PackageFlow({
   busy,
   message,
   onAction,
+  onContactUs,
   view = "all",
 }) {
   const [showSlotPicker, setShowSlotPicker] = useState(false);
@@ -412,13 +410,14 @@ export default function PackageFlow({
                   "Need extra sites, integrations, copy, design, or something we don't list? Tell us what you need.",
                 highlights: [
                   "Custom quote",
-                  `We'll reply at ${CONTACT_EMAIL}`,
+                  "Opens support chat in the sidebar",
+                  `Or email ${CONTACT_EMAIL}`,
                   "No checkout until we agree",
                 ],
               }}
               badge="Contact us"
               actionLabel="Contact us"
-              actionHref={CONTACT_HREF}
+              onAction={() => onContactUs?.()}
             />
           </div>
         </>
