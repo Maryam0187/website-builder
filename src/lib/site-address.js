@@ -1,6 +1,14 @@
 import { query } from "./db";
 import { normalizeSubdomain, isReservedSubdomain } from "./site-host";
-import { provisionSslForDomain } from "./ssl-manager";
+import {
+  isCloudflareConfigured,
+  createCustomHostnamesForDomain,
+  checkCustomHostnamesStatus,
+  getMockVerificationRecords,
+  mapCloudflareStatus,
+  mapCloudflareSslStatus,
+  isApexDomain
+} from "./cloudflare-client";
 
 /**
  * Check if a chosen Technonaire subdomain is available for reservation.
@@ -168,7 +176,7 @@ export function validateCustomDomain(domain) {
 
 /**
  * Set a custom domain for a Domain plan site.
- * Validates format and checks if domain is already in use.
+ * Validates format, checks if domain is already in use, and creates Cloudflare custom hostnames.
  */
 export async function setCustomDomainForSite(siteId, domain, userId) {
   const validation = validateCustomDomain(domain);
@@ -191,15 +199,79 @@ export async function setCustomDomainForSite(siteId, domain, userId) {
     throw new Error("This domain is already connected to another website");
   }
 
-  // Update the site with the custom domain
+  // Check verification mode
+  const verifyMode = process.env.DOMAIN_VERIFY_MODE || (isCloudflareConfigured() ? 'cloudflare' : 'mock');
+  
+  let cfHostnameId = null;
+  let cfHostnameStatus = null;
+  let cfSslStatus = null;
+  let cfValidationRecords = null;
+  let cfMetadata = null;
+
+  if (verifyMode === 'cloudflare' && isCloudflareConfigured()) {
+    try {
+      // Create custom hostnames via Cloudflare (may create both apex and www)
+      const hostnames = await createCustomHostnamesForDomain(normalized);
+      
+      if (hostnames.length === 0) {
+        throw new Error("Failed to create custom hostname in Cloudflare");
+      }
+
+      // Use the primary hostname (what user entered)
+      const primary = hostnames[0];
+      cfHostnameId = primary.id;
+      cfHostnameStatus = primary.status;
+      cfSslStatus = primary.sslStatus;
+      cfValidationRecords = primary.validationRecords;
+      
+      // Store metadata about all created hostnames (including www if applicable)
+      cfMetadata = {
+        hostnames: hostnames.map(h => ({
+          type: h.type,
+          hostname: h.hostname,
+          id: h.id
+        })),
+        createdAt: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error("Cloudflare custom hostname creation failed:", error);
+      throw new Error(`Could not configure domain with Cloudflare: ${error.message}`);
+    }
+  } else {
+    // Mock mode for local development
+    cfValidationRecords = getMockVerificationRecords(normalized);
+    cfHostnameStatus = 'pending_validation';
+    cfSslStatus = 'pending_validation';
+    cfMetadata = {
+      mode: 'mock',
+      note: 'Mock verification mode - set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID for production'
+    };
+  }
+
+  // Update the site with the custom domain and Cloudflare data
   const { rows, rowCount } = await query(
     `UPDATE sites
      SET custom_domain = $2, 
          domain_status = 'pending',
+         cf_hostname_id = $4,
+         cf_hostname_status = $5,
+         cf_ssl_status = $6,
+         cf_validation_records = $7,
+         cf_metadata = $8,
          updated_at = now()
      WHERE id = $1 AND owner_id = $3
      RETURNING *`,
-    [siteId, normalized, userId]
+    [
+      siteId,
+      normalized,
+      userId,
+      cfHostnameId,
+      cfHostnameStatus,
+      cfSslStatus,
+      JSON.stringify(cfValidationRecords),
+      JSON.stringify(cfMetadata)
+    ]
   );
 
   if (rowCount === 0) {
@@ -209,6 +281,10 @@ export async function setCustomDomainForSite(siteId, domain, userId) {
   return {
     customDomain: normalized,
     domainStatus: 'pending',
+    cfHostnameId,
+    cfHostnameStatus,
+    cfSslStatus,
+    validationRecords: cfValidationRecords,
     site: rows[0]
   };
 }
@@ -253,9 +329,8 @@ export function getRequiredDnsRecords(domain, appHostname = "builder.technonaire
 }
 
 /**
- * Verify DNS configuration for a custom domain.
- * In a production app, this would do actual DNS lookups.
- * For Phase 1, we simulate/stub the verification.
+ * Verify DNS configuration for a custom domain via Cloudflare Custom Hostnames API.
+ * Replaces the simulated 30s verification with real Cloudflare status checks.
  */
 export async function verifyDnsForDomain(domain) {
   const validation = validateCustomDomain(domain);
@@ -268,12 +343,11 @@ export async function verifyDnsForDomain(domain) {
     };
   }
 
-  // TODO: In production, perform actual DNS lookups here using dns.promises.resolve()
-  // For now, we'll use a simple time-based check to simulate DNS propagation
-  
   // Get the site with this domain
   const { rows } = await query(
-    `SELECT id, custom_domain, domain_verified_at, updated_at 
+    `SELECT id, custom_domain, domain_status, domain_verified_at, updated_at,
+            cf_hostname_id, cf_hostname_status, cf_ssl_status, 
+            cf_validation_records, cf_metadata
      FROM sites 
      WHERE lower(custom_domain) = lower($1)
      LIMIT 1`,
@@ -290,56 +364,174 @@ export async function verifyDnsForDomain(domain) {
   }
 
   const site = rows[0];
-  
-  // If already verified, stay verified
-  if (site.domain_verified_at) {
+  const verifyMode = process.env.DOMAIN_VERIFY_MODE || (isCloudflareConfigured() ? 'cloudflare' : 'mock');
+
+  // Parse stored validation records
+  let validationRecords = [];
+  try {
+    validationRecords = site.cf_validation_records ? JSON.parse(site.cf_validation_records) : [];
+  } catch (e) {
+    console.warn("Failed to parse cf_validation_records:", e);
+  }
+
+  // If already verified and active, return success
+  if (site.domain_verified_at && site.domain_status === 'verified') {
     return {
       verified: true,
       status: "verified",
-      message: "DNS records verified successfully",
+      message: "Domain connected and SSL active",
       verifiedAt: site.domain_verified_at,
-      records: getRequiredDnsRecords(validation.normalized)
+      sslStatus: site.cf_ssl_status || 'active',
+      records: validationRecords
     };
   }
 
-  // Simulate DNS propagation delay - in production, do actual DNS lookup
-  // For sandbox/demo: auto-verify after 30 seconds
-  const domainAge = Date.now() - new Date(site.updated_at).getTime();
-  const autoVerifyDelay = 30000; // 30 seconds for demo
-
-  if (domainAge > autoVerifyDelay) {
-    // Mark as verified
-    await query(
-      `UPDATE sites 
-       SET domain_status = 'verified', 
-           domain_verified_at = now(),
-           updated_at = now()
-       WHERE id = $1`,
-      [site.id]
-    );
-
-    // Provision SSL certificate for the verified domain
+  // Cloudflare mode - check real status
+  if (verifyMode === 'cloudflare' && isCloudflareConfigured() && site.cf_hostname_id) {
     try {
-      await provisionSslForDomain(validation.normalized, site.id);
-    } catch (sslError) {
-      console.warn(`SSL provisioning failed for ${validation.normalized}:`, sslError.message);
-      // Don't fail verification if SSL provisioning fails - it can be retried
+      // Get metadata to find all hostname IDs (including www)
+      let metadata = {};
+      try {
+        metadata = site.cf_metadata ? JSON.parse(site.cf_metadata) : {};
+      } catch (e) {
+        console.warn("Failed to parse cf_metadata:", e);
+      }
+
+      const hostnameIds = metadata.hostnames 
+        ? metadata.hostnames.map(h => h.id)
+        : [site.cf_hostname_id];
+
+      // Check status of all hostnames
+      const statuses = await checkCustomHostnamesStatus(hostnameIds);
+      
+      // Primary hostname is the first one (what user entered)
+      const primaryStatus = statuses[0];
+
+      if (!primaryStatus || primaryStatus.status === 'error') {
+        return {
+          verified: false,
+          status: "error",
+          message: primaryStatus?.error || "Could not check domain status with Cloudflare",
+          records: validationRecords
+        };
+      }
+
+      // Update database with latest Cloudflare status
+      const mappedStatus = mapCloudflareStatus(primaryStatus.status);
+      const isVerified = primaryStatus.verified;
+
+      await query(
+        `UPDATE sites
+         SET cf_hostname_status = $2,
+             cf_ssl_status = $3,
+             domain_status = $4,
+             domain_verified_at = CASE WHEN $5 THEN COALESCE(domain_verified_at, now()) ELSE domain_verified_at END,
+             cf_validation_records = $6,
+             updated_at = now()
+         WHERE id = $1`,
+        [
+          site.id,
+          primaryStatus.status,
+          primaryStatus.sslStatus,
+          mappedStatus,
+          isVerified,
+          JSON.stringify(primaryStatus.validationRecords || validationRecords)
+        ]
+      );
+
+      if (isVerified) {
+        return {
+          verified: true,
+          status: "verified",
+          message: "Domain connected and SSL active",
+          verifiedAt: site.domain_verified_at || new Date().toISOString(),
+          sslStatus: primaryStatus.sslStatus,
+          cfStatus: primaryStatus.status,
+          records: primaryStatus.validationRecords || validationRecords,
+          allHostnames: statuses.map(s => ({
+            hostname: s.hostname,
+            status: s.status,
+            sslStatus: s.sslStatus
+          }))
+        };
+      }
+
+      // Not verified yet - return pending with current status
+      let message = "Waiting for DNS records to be configured";
+      if (primaryStatus.status === 'pending_validation') {
+        message = "Waiting for DNS records to propagate - this can take a few minutes";
+      } else if (primaryStatus.status === 'active') {
+        message = "Domain routing active - waiting for SSL certificate";
+      }
+
+      return {
+        verified: false,
+        status: mappedStatus,
+        message,
+        cfStatus: primaryStatus.status,
+        sslStatus: primaryStatus.sslStatus,
+        records: primaryStatus.validationRecords || validationRecords,
+        allHostnames: statuses.map(s => ({
+          hostname: s.hostname,
+          status: s.status,
+          sslStatus: s.sslStatus
+        }))
+      };
+
+    } catch (error) {
+      console.error("Cloudflare verification check failed:", error);
+      return {
+        verified: false,
+        status: "error",
+        message: `Verification check failed: ${error.message}`,
+        records: validationRecords
+      };
+    }
+  }
+
+  // Mock mode - simulate verification after 30 seconds (for local dev)
+  if (verifyMode === 'mock') {
+    const domainAge = Date.now() - new Date(site.updated_at).getTime();
+    const autoVerifyDelay = 30000; // 30 seconds for mock
+
+    if (domainAge > autoVerifyDelay) {
+      await query(
+        `UPDATE sites 
+         SET domain_status = 'verified', 
+             domain_verified_at = now(),
+             cf_hostname_status = 'active',
+             cf_ssl_status = 'active',
+             updated_at = now()
+         WHERE id = $1`,
+        [site.id]
+      );
+
+      return {
+        verified: true,
+        status: "verified",
+        message: "Domain connected (mock mode)",
+        verifiedAt: new Date().toISOString(),
+        sslStatus: 'active',
+        mode: 'mock',
+        records: validationRecords
+      };
     }
 
     return {
-      verified: true,
-      status: "verified",
-      message: "DNS verified and SSL certificate provisioned successfully",
-      verifiedAt: new Date().toISOString(),
-      records: getRequiredDnsRecords(validation.normalized)
+      verified: false,
+      status: "pending",
+      message: "Mock verification - waiting 30 seconds (set CLOUDFLARE_API_TOKEN for production)",
+      mode: 'mock',
+      records: validationRecords
     };
   }
 
+  // No Cloudflare configured and not in mock mode
   return {
     verified: false,
-    status: "pending",
-    message: "Waiting for DNS records to propagate - this can take a few minutes",
-    records: getRequiredDnsRecords(validation.normalized)
+    status: "not_configured",
+    message: "Domain verification not configured. Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID.",
+    records: validationRecords
   };
 }
 
@@ -365,14 +557,53 @@ export async function markDomainVerified(siteId) {
 }
 
 /**
- * Remove custom domain from a site.
+ * Remove custom domain from a site and clean up Cloudflare hostnames.
  */
 export async function removeCustomDomain(siteId, userId) {
+  // Get the site first to retrieve Cloudflare hostname IDs
+  const { rows: siteRows } = await query(
+    `SELECT id, cf_hostname_id, cf_metadata FROM sites WHERE id = $1 AND owner_id = $2`,
+    [siteId, userId]
+  );
+
+  if (siteRows.length === 0) {
+    throw new Error("Site not found");
+  }
+
+  const site = siteRows[0];
+
+  // Delete Cloudflare hostnames if configured
+  if (isCloudflareConfigured() && site.cf_metadata) {
+    try {
+      const metadata = JSON.parse(site.cf_metadata);
+      if (metadata.hostnames && Array.isArray(metadata.hostnames)) {
+        // Delete all hostnames (apex and www if both exist)
+        const deleteCustomHostname = (await import("./cloudflare-client.js")).deleteCustomHostname;
+        await Promise.allSettled(
+          metadata.hostnames.map(h => deleteCustomHostname(h.id))
+        );
+      } else if (site.cf_hostname_id) {
+        // Fallback - delete primary hostname only
+        const deleteCustomHostname = (await import("./cloudflare-client.js")).deleteCustomHostname;
+        await deleteCustomHostname(site.cf_hostname_id);
+      }
+    } catch (error) {
+      console.warn("Failed to delete Cloudflare hostnames:", error);
+      // Continue with database cleanup even if Cloudflare delete fails
+    }
+  }
+
+  // Clear domain from database
   const { rows, rowCount } = await query(
     `UPDATE sites
      SET custom_domain = NULL,
          domain_status = 'none',
          domain_verified_at = NULL,
+         cf_hostname_id = NULL,
+         cf_hostname_status = NULL,
+         cf_ssl_status = NULL,
+         cf_validation_records = NULL,
+         cf_metadata = NULL,
          updated_at = now()
      WHERE id = $1 AND owner_id = $2
      RETURNING *`,

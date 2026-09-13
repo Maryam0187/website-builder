@@ -116,6 +116,11 @@ CREATE TABLE IF NOT EXISTS sites (
   custom_domain    TEXT NULL,
   domain_status    TEXT NOT NULL DEFAULT 'none',
   domain_verified_at TIMESTAMPTZ NULL,
+  cf_hostname_id   TEXT NULL,
+  cf_hostname_status TEXT NULL,
+  cf_ssl_status    TEXT NULL,
+  cf_validation_records JSONB NULL,
+  cf_metadata      JSONB NULL,
   content          JSONB NOT NULL DEFAULT '{}',
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -125,6 +130,15 @@ ALTER TABLE sites ADD COLUMN IF NOT EXISTS subdomain TEXT;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS custom_domain TEXT;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS domain_status TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS domain_verified_at TIMESTAMPTZ NULL;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_hostname_id TEXT NULL;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_hostname_status TEXT NULL;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_ssl_status TEXT NULL;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_validation_records JSONB NULL;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_metadata JSONB NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_custom_domain_unique
+  ON sites (lower(custom_domain))
+  WHERE custom_domain IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS site_versions (
   id           BIGSERIAL PRIMARY KEY,

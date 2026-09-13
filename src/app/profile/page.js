@@ -113,6 +113,8 @@ export default function ProfilePage() {
         customDomain: item.customDomain || null,
         domainStatus: item.domainStatus || "none",
         domainVerifiedAt: item.domainVerifiedAt || null,
+        cfValidationRecords: item.cfValidationRecords || null,
+        cfSslStatus: item.cfSslStatus || null,
         liveUrl: item.liveUrl || null,
         name: item.content?.brand?.name || item.name || item.slug,
         status: item.status,
@@ -267,6 +269,8 @@ export default function ProfilePage() {
                 customDomain: data.site.customDomain || item.customDomain || null,
                 domainStatus: data.site.domainStatus || item.domainStatus || "none",
                 domainVerifiedAt: data.site.domainVerifiedAt || item.domainVerifiedAt || null,
+                cfValidationRecords: data.site.cfValidationRecords || data.validationRecords || item.cfValidationRecords || null,
+                cfSslStatus: data.site.cfSslStatus || item.cfSslStatus || null,
                 liveUrl: data.liveUrl || item.liveUrl || null,
                 name: data.site.content?.brand?.name || item.name,
               }
@@ -975,12 +979,14 @@ export default function ProfilePage() {
                             {billing?.features?.domain && (
                               <div className="space-y-2 border-t border-white/10 pt-3">
                                 <h5 className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">
-                                  Custom domain
+                                  Use your own domain
                                 </h5>
                                 <CustomDomainSetup
                                   siteId={item.id}
                                   currentDomain={item.customDomain}
                                   domainStatus={item.domainStatus}
+                                  cfValidationRecords={item.cfValidationRecords}
+                                  cfSslStatus={item.cfSslStatus}
                                   canEdit={canGoLive}
                                   onUpdate={(data) => {
                                     if (data.site) {

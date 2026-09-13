@@ -7,7 +7,6 @@ import {
   setCustomDomainForSite,
   verifyDnsForDomain,
   removeCustomDomain,
-  getRequiredDnsRecords,
   validateCustomDomain,
 } from "@/lib/site-address";
 import { getSiteById, ownerOwnsSite, sitePublicUrl } from "@/lib/store-actions";
@@ -159,7 +158,11 @@ export async function POST(request) {
         success: true,
         subdomain: result.subdomain,
         liveUrl: sitePublicUrl(updated),
-        site: updated,
+        site: {
+          ...updated,
+          cfValidationRecords: updated.cfValidationRecords,
+          cfSslStatus: updated.cfSslStatus
+        },
         message: action === "update-subdomain"
           ? `Address updated to ${result.subdomain}.technonaire.site`
           : `Claimed ${result.subdomain}.technonaire.site for your website`,
@@ -182,15 +185,19 @@ export async function POST(request) {
 
       const result = await setCustomDomainForSite(siteId, domain, user.id);
       const updated = await getSiteById(siteId);
-      const dnsRecords = getRequiredDnsRecords(result.customDomain);
 
       return NextResponse.json({
         success: true,
         customDomain: result.customDomain,
         domainStatus: result.domainStatus,
-        dnsRecords,
-        site: updated,
-        message: `Domain ${result.customDomain} added - configure DNS records to verify`,
+        validationRecords: result.validationRecords,
+        dnsRecords: result.validationRecords, // For backwards compat
+        site: {
+          ...updated,
+          cfValidationRecords: updated.cfValidationRecords,
+          cfSslStatus: updated.cfSslStatus
+        },
+        message: `We'll connect ${result.customDomain} and www.${result.customDomain}. Follow the steps to complete setup.`,
       });
     }
 
@@ -202,9 +209,24 @@ export async function POST(request) {
       const verification = await verifyDnsForDomain(site.customDomain);
       const updated = await getSiteById(siteId);
 
+      // Translate technical messages to user-friendly ones
+      let friendlyMessage = verification.message;
+      if (verification.verified) {
+        friendlyMessage = "Your website is connected and ready!";
+      } else if (verification.status === "pending") {
+        friendlyMessage = "Still waiting for your domain settings to update. This usually takes 5-30 minutes.";
+      } else if (verification.status === "error") {
+        friendlyMessage = "We couldn't verify your domain. Please check that you added the records correctly.";
+      }
+
       return NextResponse.json({
         ...verification,
-        site: updated,
+        message: friendlyMessage,
+        site: {
+          ...updated,
+          cfValidationRecords: updated.cfValidationRecords,
+          cfSslStatus: updated.cfSslStatus
+        },
         liveUrl: verification.verified ? `https://${site.customDomain}` : null,
       });
     }
