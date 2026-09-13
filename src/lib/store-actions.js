@@ -89,6 +89,19 @@ function mapSite(row) {
   if (!row) return null;
   const content =
     typeof row.content === "string" ? JSON.parse(row.content) : row.content || {};
+  
+  // Parse Cloudflare validation records if present
+  let cfValidationRecords = null;
+  if (row.cf_validation_records) {
+    try {
+      cfValidationRecords = typeof row.cf_validation_records === "string"
+        ? JSON.parse(row.cf_validation_records)
+        : row.cf_validation_records;
+    } catch (e) {
+      console.warn("Failed to parse cf_validation_records for site", row.id);
+    }
+  }
+  
   return {
     id: Number(row.id),
     slug: row.slug,
@@ -96,6 +109,10 @@ function mapSite(row) {
     customDomain: row.custom_domain || null,
     domainStatus: row.domain_status || "none",
     domainVerifiedAt: row.domain_verified_at || null,
+    cfHostnameId: row.cf_hostname_id || null,
+    cfHostnameStatus: row.cf_hostname_status || null,
+    cfSslStatus: row.cf_ssl_status || null,
+    cfValidationRecords,
     conversationId: row.conversation_id == null ? null : Number(row.conversation_id),
     ownerId: row.owner_id == null ? null : Number(row.owner_id),
     status: row.status,

@@ -79,6 +79,14 @@ async function ensureBillingColumns() {
     ALTER TABLE sites ADD COLUMN IF NOT EXISTS custom_domain TEXT NULL;
     ALTER TABLE sites ADD COLUMN IF NOT EXISTS domain_status TEXT NOT NULL DEFAULT 'none';
     ALTER TABLE sites ADD COLUMN IF NOT EXISTS domain_verified_at TIMESTAMPTZ NULL;
+    ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_hostname_id TEXT NULL;
+    ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_hostname_status TEXT NULL;
+    ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_ssl_status TEXT NULL;
+    ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_validation_records JSONB NULL;
+    ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_metadata JSONB NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_custom_domain_unique
+      ON sites (lower(custom_domain))
+      WHERE custom_domain IS NOT NULL;
   `,
     )
     .catch((error) => {
