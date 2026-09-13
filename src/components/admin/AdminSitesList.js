@@ -150,7 +150,7 @@ export default function AdminSitesList({ initialSites = [] }) {
                         {templates.map((t) => (
                           <option key={t.id} value={t.id}>
                             {t.label}
-                            {t.commerce ? " (cart → contact)" : ""}
+                            {t.dineOs ? " (DineOS)" : ""}
                           </option>
                         ))}
                       </select>

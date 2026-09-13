@@ -77,6 +77,8 @@ Images are stored under `/data/uploads` (see `scripts/railway-start.sh`).
 |----------|---------|
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
 | `NEXT_PUBLIC_APP_URL` | `https://your-service.up.railway.app` |
+| `SITE_HOST_ROOT` | `technonaire.site` (customer live hosts) |
+| `NEXT_PUBLIC_SITE_HOST_ROOT` | `technonaire.site` (same, for UI links) |
 | `NEXT_PUBLIC_TECHNONAIRE_URL` | `https://technonaire.com` |
 | `SESSION_SECRET` | long random string |
 | `ADMIN_EMAIL` | your admin email |
@@ -88,6 +90,17 @@ Redeploy after setting variables.
 
 ### 4. Domain (optional)
 Railway → Settings → Domains → `.up.railway.app` or `builder.technonaire.com`.
+
+### 4b. Customer live hosts (`*.technonaire.site`)
+Starter sites publish to a random address like `https://a1b2c3d4.technonaire.site`.
+
+1. Own the domain `technonaire.site`
+2. Railway → Domains → add `technonaire.site` and `*.technonaire.site` (wildcard)
+3. DNS: CNAME/A for apex + wildcard as Railway instructs
+4. Enable TLS / wildcard certificate for `*.technonaire.site`
+5. Set `SITE_HOST_ROOT` and `NEXT_PUBLIC_SITE_HOST_ROOT` to `technonaire.site`
+
+Locally, Preview still uses `/site/{slug}`. Live URLs show as `https://{subdomain}.technonaire.site` once assigned.
 
 ### 5. Point agency (Netlify)
 

@@ -29,7 +29,7 @@ export default function SiteNav({
   const brand = content?.brand || {};
   const nav = getNavItems(content);
   const onePage = isOnePageLayout(content);
-  const root = basePath || (slug ? `/site/${slug}` : "");
+  const root = basePath != null ? basePath : slug ? `/site/${slug}` : "";
   const nameColor = overlay
     ? content?.styles?.["brand.name"]?.color || "#ffffff"
     : content?.styles?.["brand.name"]?.color || theme.text;
@@ -43,6 +43,9 @@ export default function SiteNav({
     if (onePage) {
       if (!root) return `#${id}`;
       return id === "home" ? `${root}#home` : `${root}#${id}`;
+    }
+    if (root === "") {
+      return id === "home" ? "/" : `/${id}`;
     }
     if (!root) return "#";
     return id === "home" ? root : `${root}/${id}`;

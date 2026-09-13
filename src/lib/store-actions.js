@@ -1,4 +1,4 @@
-import { nanoid } from "nanoid";
+import { nanoid, customAlphabet } from "nanoid";
 import { query, token, toInt, withTransaction } from "./db";
 import {
   addPageToContent,
@@ -11,6 +11,20 @@ import {
 import { hashPassword } from "./auth";
 import { BOT_STEPS, getOnboardingPrompt, labelForOption } from "./chat-onboarding";
 import { getTemplate, resolveTemplateId } from "./templates";
+import {
+  isReservedSubdomain,
+  normalizeSubdomain,
+  publicUrlForSubdomain,
+} from "./site-host";
+import { withCartAddonGate } from "./cart-addon";
+
+export const MAX_SITE_VERSIONS = 5;
+
+const generateLabel = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 8);
+
+function generateRandomSubdomain() {
+  return generateLabel();
+}
 
 /** Temporary owner password — hashed in DB; plaintext returned once for chat/login. */
 export function generateOwnerPassword() {
@@ -78,6 +92,7 @@ function mapSite(row) {
   return {
     id: Number(row.id),
     slug: row.slug,
+    subdomain: row.subdomain || null,
     conversationId: row.conversation_id == null ? null : Number(row.conversation_id),
     ownerId: row.owner_id == null ? null : Number(row.owner_id),
     status: row.status,
@@ -447,9 +462,6 @@ async function finishBotOnboardingAndCreateDraft(conversation) {
     });
 
     const layoutLabel = layout === "one-page" ? "one-page (scroll)" : "multi-page";
-    const commerceNote = getTemplate(template).commerce
-      ? `Cart/checkout buttons invite customers to contact you — message us if you want full online ordering.`
-      : `Change text and photos yourself. Message us here if you want a custom design or another menu section.`;
     await addMessage({
       conversationId: conversation.id,
       sender: "bot",
@@ -467,7 +479,7 @@ async function finishBotOnboardingAndCreateDraft(conversation) {
         `Edit: ${appUrl}/edit`,
         ``,
         `You can switch templates anytime in the editor.`,
-        commerceNote,
+        `Change text and photos yourself. Message us here if you want cart/checkout or a custom design.`,
       ].join("\n"),
       system: true,
     });
@@ -661,12 +673,177 @@ export async function getSiteById(siteId) {
   const id = toInt(siteId);
   if (id == null) return null;
   const { rows } = await query(`SELECT * FROM sites WHERE id = $1`, [id]);
-  return withNormalizedContent(mapSite(rows[0]));
+  return withCartAddonGate(withNormalizedContent(mapSite(rows[0])));
 }
 
 export async function getSiteBySlug(slug) {
   const { rows } = await query(`SELECT * FROM sites WHERE slug = $1`, [slug]);
-  return withNormalizedContent(mapSite(rows[0]));
+  return withCartAddonGate(withNormalizedContent(mapSite(rows[0])));
+}
+
+export async function getSiteBySubdomain(subdomain) {
+  const label = normalizeSubdomain(subdomain);
+  if (!label) return null;
+  const { rows } = await query(
+    `SELECT * FROM sites WHERE lower(subdomain) = lower($1) LIMIT 1`,
+    [label],
+  );
+  return withCartAddonGate(withNormalizedContent(mapSite(rows[0])));
+}
+
+/**
+ * Ensure a random Technonaire subdomain exists for Starter hosting.
+ * Keeps an existing subdomain stable across take-offline / go-live.
+ */
+export async function ensureSiteSubdomain(siteId) {
+  const id = toInt(siteId);
+  if (id == null) throw new Error("Site not found");
+
+  const existing = await getSiteById(id);
+  if (!existing) throw new Error("Site not found");
+  if (existing.subdomain) return existing;
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const label = generateRandomSubdomain();
+    if (isReservedSubdomain(label)) continue;
+    try {
+      const { rowCount } = await query(
+        `UPDATE sites
+         SET subdomain = $2, updated_at = now()
+         WHERE id = $1 AND subdomain IS NULL`,
+        [id, label],
+      );
+      if (rowCount) return getSiteById(id);
+      const raced = await getSiteById(id);
+      if (raced?.subdomain) return raced;
+    } catch (err) {
+      // Unique violation — try another label
+      if (err?.code === "23505") continue;
+      throw err;
+    }
+  }
+  throw new Error("Could not assign a Technonaire address. Try again.");
+}
+
+export function sitePublicUrl(site) {
+  if (!site?.subdomain) return null;
+  return publicUrlForSubdomain(site.subdomain);
+}
+
+function mapSiteVersion(row) {
+  if (!row) return null;
+  const content =
+    typeof row.content === "string" ? JSON.parse(row.content) : row.content || {};
+  return {
+    id: Number(row.id),
+    siteId: Number(row.site_id),
+    label: row.label || "",
+    content: normalizeSiteContent(content),
+    createdBy: row.created_by == null ? null : Number(row.created_by),
+    createdAt: row.created_at,
+  };
+}
+
+export async function listSiteVersions(siteId, { limit = MAX_SITE_VERSIONS } = {}) {
+  const id = toInt(siteId);
+  if (id == null) return [];
+  const { rows } = await query(
+    `SELECT id, site_id, label, created_by, created_at
+     FROM site_versions
+     WHERE site_id = $1
+     ORDER BY created_at DESC, id DESC
+     LIMIT $2`,
+    [id, Math.max(1, Math.min(MAX_SITE_VERSIONS, Number(limit) || MAX_SITE_VERSIONS))],
+  );
+  return rows.map((row) => mapSiteVersion({ ...row, content: {} }));
+}
+
+export async function getSiteVersionById(versionId) {
+  const id = toInt(versionId);
+  if (id == null) return null;
+  const { rows } = await query(`SELECT * FROM site_versions WHERE id = $1`, [id]);
+  return mapSiteVersion(rows[0]);
+}
+
+export async function createSiteVersion(siteId, { label = "", createdBy = null } = {}) {
+  const id = toInt(siteId);
+  if (id == null) throw new Error("Site not found");
+  const site = await getSiteById(id);
+  if (!site) throw new Error("Site not found");
+
+  const { rows } = await query(
+    `INSERT INTO site_versions (site_id, content, label, created_by)
+     VALUES ($1, $2::jsonb, $3, $4)
+     RETURNING *`,
+    [
+      id,
+      JSON.stringify(site.content || {}),
+      String(label || "").trim().slice(0, 120) || "Snapshot",
+      toInt(createdBy),
+    ],
+  );
+
+  await query(
+    `DELETE FROM site_versions
+     WHERE site_id = $1
+       AND id NOT IN (
+         SELECT id FROM site_versions
+         WHERE site_id = $1
+         ORDER BY created_at DESC, id DESC
+         LIMIT $2
+       )`,
+    [id, MAX_SITE_VERSIONS],
+  );
+
+  return mapSiteVersion(rows[0]);
+}
+
+export async function renameSiteVersion(siteId, versionId, label) {
+  const id = toInt(siteId);
+  const vid = toInt(versionId);
+  if (id == null || vid == null) throw new Error("Version not found");
+  const nextLabel = String(label || "").trim().slice(0, 120);
+  if (!nextLabel) throw new Error("Version name is required");
+
+  const { rows } = await query(
+    `UPDATE site_versions
+     SET label = $3
+     WHERE id = $1 AND site_id = $2
+     RETURNING id, site_id, label, created_by, created_at`,
+    [vid, id, nextLabel],
+  );
+  if (!rows[0]) throw new Error("Version not found");
+  return mapSiteVersion({ ...rows[0], content: {} });
+}
+
+export async function deleteSiteVersion(siteId, versionId) {
+  const id = toInt(siteId);
+  const vid = toInt(versionId);
+  if (id == null || vid == null) throw new Error("Version not found");
+
+  const { rowCount } = await query(
+    `DELETE FROM site_versions WHERE id = $1 AND site_id = $2`,
+    [vid, id],
+  );
+  if (!rowCount) throw new Error("Version not found");
+  return { ok: true };
+}
+
+export async function restoreSiteVersion(siteId, versionId, { createdBy = null } = {}) {
+  const id = toInt(siteId);
+  const vid = toInt(versionId);
+  if (id == null || vid == null) throw new Error("Version not found");
+
+  const version = await getSiteVersionById(vid);
+  if (!version || version.siteId !== id) throw new Error("Version not found");
+
+  await createSiteVersion(id, {
+    label: "Before restore",
+    createdBy,
+  });
+
+  const updated = await updateSiteContent(id, version.content);
+  return { site: updated, restoredFrom: version };
 }
 
 export async function updateSiteContent(siteId, content) {
@@ -882,7 +1059,8 @@ export async function listSitesByOwner(ownerId) {
     `SELECT * FROM sites WHERE owner_id = $1 ORDER BY updated_at DESC, id DESC`,
     [id],
   );
-  return rows.map((row) => withNormalizedContent(mapSite(row)));
+  const sites = rows.map((row) => withNormalizedContent(mapSite(row)));
+  return Promise.all(sites.map((site) => withCartAddonGate(site)));
 }
 
 export function isSiteLive(site) {

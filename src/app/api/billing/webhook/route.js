@@ -29,8 +29,16 @@ export async function POST(request) {
       return NextResponse.json({ error: "Missing STRIPE_WEBHOOK_SECRET" }, { status: 400 });
     }
   } catch (err) {
+    console.error(
+      "Stripe webhook signature error:",
+      err.message,
+      "| Update STRIPE_WEBHOOK_SECRET to the whsec_… printed by `stripe listen`, then restart next dev.",
+    );
     return NextResponse.json(
-      { error: `Webhook signature error: ${err.message}` },
+      {
+        error: `Webhook signature error: ${err.message}`,
+        hint: "Locally, copy the whsec_ from `stripe listen` into STRIPE_WEBHOOK_SECRET and restart the app.",
+      },
       { status: 400 },
     );
   }
@@ -46,6 +54,7 @@ export async function POST(request) {
         }
         break;
       }
+      case "customer.subscription.created":
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
         await applyStripeSubscription(event.data.object);

@@ -1,7 +1,7 @@
 /**
  * Business-type website templates.
  * Each template has a distinct visual layoutStyle (single-page scroll).
- * Cart/checkout is not built-in — commerce templates prompt clients to contact us.
+ * Cart/checkout is an optional add-on (Profile → Plan), not included in templates.
  */
 
 export const TEMPLATE_IDS = [
@@ -158,7 +158,7 @@ export const TEMPLATE_CATALOG = {
     id: "restaurant",
     label: "Restaurant",
     description: "Dark dining theater — centered type and a dramatic menu list.",
-    commerce: true,
+    commerce: false,
     dineOs: true,
     layoutStyle: "theater",
     theme: {
@@ -214,7 +214,7 @@ export const TEMPLATE_CATALOG = {
     id: "shop",
     label: "Shop / store",
     description: "Retail-first layout with bold product grid and storefront energy.",
-    commerce: true,
+    commerce: false,
     layoutStyle: "retail",
     theme: {
       primary: "#0d9488",
@@ -226,7 +226,7 @@ export const TEMPLATE_CATALOG = {
     hero: {
       headline: (name) => name,
       subheadline:
-        "Browse featured products below. Full shopping cart and checkout can be enabled — contact us to set it up.",
+        "Browse featured products below. Need cart and checkout? Contact us to add it as an add-on.",
       cta: "Browse products",
       image: img("photo-1441986300917-64674bd600d8", 2000),
     },
@@ -492,7 +492,7 @@ export const TEMPLATE_CATALOG = {
     id: "events",
     label: "Events / venues",
     description: "Night marquee energy with a schedule-style offer list.",
-    commerce: true,
+    commerce: false,
     layoutStyle: "marquee",
     premium: true,
     theme: {
@@ -660,7 +660,7 @@ export const TEMPLATE_CATALOG = {
     id: "perfume",
     label: "Perfume / fragrance",
     description: "Premium atelier layout — dark champagne tones and scent-story sections.",
-    commerce: true,
+    commerce: false,
     layoutStyle: "atelier",
     premium: true,
     theme: {

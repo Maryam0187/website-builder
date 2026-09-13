@@ -55,11 +55,6 @@ export default function AdminTemplatesGallery() {
                     style={{ background: t.theme?.[key] || "#333" }}
                   />
                 ))}
-                {t.commerce && (
-                  <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
-                    Cart → contact us
-                  </span>
-                )}
               </div>
               <Link
                 href={`/admin/templates/${t.id}`}

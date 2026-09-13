@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import SiteNav from "./SiteNav";
+import StickySiteHeader from "./StickySiteHeader";
 import CommerceContactModal from "./CommerceContactModal";
 import Reveal from "./Reveal";
 import SiteContactForm from "./SiteContactForm";
@@ -213,7 +214,7 @@ export default function LocalBusinessTemplate({
   const pageId = resolvePageId(normalized, pageIdProp);
   const page = normalized.pages?.[pageId] || normalized.pages?.home || {};
   const pageType = page.type || pageId;
-  const root = basePath || (slug ? `/site/${slug}` : "");
+  const root = basePath != null ? basePath : slug ? `/site/${slug}` : "";
 
   const handle = (path, label, type = "text", fallbackColor) => {
     if (!editMode || !onEdit) return;
@@ -234,7 +235,13 @@ export default function LocalBusinessTemplate({
       ? "cursor-pointer outline outline-2 outline-transparent transition hover:outline-[#c4a574]/70 rounded-sm"
       : "";
 
-  const contactHref = onePage ? "#contact" : root ? `${root}/contact` : "#contact";
+  const contactHref = onePage
+    ? "#contact"
+    : root === ""
+      ? "/contact"
+      : root
+        ? `${root}/contact`
+        : "#contact";
 
   const navOrder = (normalized.nav || [])
     .map((item) => item.pageId)
@@ -264,13 +271,7 @@ export default function LocalBusinessTemplate({
         ["--primary"]: theme.primary || "#1a5f4a",
       }}
     >
-      <div
-        className={`z-40 w-full ${
-          overlayNav
-            ? "sticky top-0 bg-gradient-to-b from-black/55 via-black/25 to-transparent backdrop-blur-[2px]"
-            : "relative"
-        }`}
-      >
+      <StickySiteHeader overlay={overlayNav}>
         <SiteNav
           content={normalized}
           slug={slug}
@@ -283,7 +284,7 @@ export default function LocalBusinessTemplate({
           onCartClick={() => setCommerceOpen(true)}
           overlay={overlayNav}
         />
-      </div>
+      </StickySiteHeader>
 
       {onePage
         ? navOrder.map((id) => {

@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import SiteNav from "./SiteNav";
+import StickySiteHeader from "./StickySiteHeader";
 import CommerceContactModal from "./CommerceContactModal";
 import { createTemplateHandlers } from "./template-helpers";
 import {
@@ -39,13 +40,19 @@ export default function TemplateChrome({
   const pageId = resolvePageId(normalized, pageIdProp);
   const page = normalized.pages?.[pageId] || normalized.pages?.home || {};
   const pageType = page.type || pageId;
-  const root = basePath || (slug ? `/site/${slug}` : "");
+  const root = basePath != null ? basePath : slug ? `/site/${slug}` : "";
   const { handle, editable } = createTemplateHandlers({
     content: normalized,
     editMode,
     onEdit,
   });
-  const contactHref = onePage ? "#contact" : root ? `${root}/contact` : "#contact";
+  const contactHref = onePage
+    ? "#contact"
+    : root === ""
+      ? "/contact"
+      : root
+        ? `${root}/contact`
+        : "#contact";
   const navOrder = (normalized.nav || [])
     .map((item) => item.pageId)
     .filter((id) => normalized.pages?.[id]);
@@ -73,15 +80,7 @@ export default function TemplateChrome({
         ["--primary"]: theme.primary || "#1a5f4a",
       }}
     >
-      <div
-        className={`z-40 w-full ${
-          overlayNav
-            ? "sticky top-0 bg-gradient-to-b from-black/55 via-black/25 to-transparent backdrop-blur-[2px]"
-            : lightNav
-              ? "sticky top-0 border-b border-black/5 bg-white/80 backdrop-blur-md"
-              : "relative"
-        }`}
-      >
+      <StickySiteHeader overlay={overlayNav}>
         <SiteNav
           content={normalized}
           slug={slug}
@@ -95,7 +94,7 @@ export default function TemplateChrome({
           overlay={overlayNav}
           wide={navWide}
         />
-      </div>
+      </StickySiteHeader>
 
       {onePage
         ? navOrder.map((id) => {

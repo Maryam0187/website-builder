@@ -15,9 +15,15 @@ import {
   listSitesByOwner,
   ownerOwnsSite,
   setActiveSiteForOwner,
+  sitePublicUrl,
   updateSiteContent,
 } from "@/lib/store-actions";
 import { setOwnerSiteLive } from "@/lib/billing";
+
+function withLiveUrl(site) {
+  if (!site) return site;
+  return { ...site, liveUrl: sitePublicUrl(site) };
+}
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -36,7 +42,7 @@ export async function GET(request) {
     if (user.role === "owner" && !ownerOwnsSite(user, site)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    return NextResponse.json({ site });
+    return NextResponse.json({ site: withLiveUrl(site) });
   }
 
   const user = await requireUser(["admin", "owner"]);
@@ -50,14 +56,14 @@ export async function GET(request) {
     if (user.role === "owner" && !ownerOwnsSite(user, site)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    return NextResponse.json({ site });
+    return NextResponse.json({ site: withLiveUrl(site) });
   }
 
   if (user.role === "admin") {
     return NextResponse.json({ sites: await listSites() });
   }
 
-  const sites = await listSitesByOwner(user.id);
+  const sites = (await listSitesByOwner(user.id)).map(withLiveUrl);
   return NextResponse.json({
     sites,
     activeSiteId: user.siteId || null,
@@ -103,8 +109,12 @@ export async function POST(request) {
           return NextResponse.json({ error: "siteId required" }, { status: 400 });
         }
         const result = await setOwnerSiteLive(user.id, siteId, action === "go-live");
-        const sites = await listSitesByOwner(user.id);
-        return NextResponse.json({ ...result, sites });
+        const sites = (await listSitesByOwner(user.id)).map(withLiveUrl);
+        return NextResponse.json({
+          ...result,
+          site: withLiveUrl(result.site),
+          sites,
+        });
       }
 
       if (action === "rename-site") {

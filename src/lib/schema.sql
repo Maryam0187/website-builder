@@ -112,10 +112,25 @@ CREATE TABLE IF NOT EXISTS sites (
   conversation_id  BIGINT NULL REFERENCES conversations(id) ON DELETE SET NULL,
   owner_id         BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
   status           TEXT NOT NULL DEFAULT 'draft',
+  subdomain        TEXT NULL,
   content          JSONB NOT NULL DEFAULT '{}',
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS subdomain TEXT;
+
+CREATE TABLE IF NOT EXISTS site_versions (
+  id           BIGSERIAL PRIMARY KEY,
+  site_id      BIGINT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  content      JSONB NOT NULL DEFAULT '{}',
+  label        TEXT NOT NULL DEFAULT '',
+  created_by   BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_versions_site_id_created
+  ON site_versions (site_id, created_at DESC);
 
 DO $$
 BEGIN
@@ -154,6 +169,9 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation
 CREATE INDEX IF NOT EXISTS idx_conversations_access_token ON conversations(access_token);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_email_unique ON conversations (lower(email));
 CREATE INDEX IF NOT EXISTS idx_sites_slug ON sites(slug);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_subdomain_unique
+  ON sites (lower(subdomain))
+  WHERE subdomain IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);

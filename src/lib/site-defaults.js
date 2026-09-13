@@ -69,9 +69,9 @@ function createMenuPage(templateDef) {
   return {
     type: "menu",
     title: templateDef?.menuLabel || "Menu",
-    commerce: Boolean(templateDef?.commerce),
+    commerce: false,
     contactNote:
-      "Full cart and checkout are not included on the sample site. Contact us to enable online ordering.",
+      "Add the Cart & checkout add-on in Profile to show cart buttons on your menu.",
     items:
       items.length > 0
         ? items
@@ -250,7 +250,7 @@ export function createPageByType(type, { label, title } = {}) {
     case "services":
       return createServicesPage(pageTitle);
     case "menu":
-      return createMenuPage({ menuLabel: pageTitle, menuItems: [], commerce: true });
+      return createMenuPage({ menuLabel: pageTitle, menuItems: [], commerce: false });
     case "gallery":
       return createGalleryPage(pageTitle);
     case "faq":
@@ -326,7 +326,7 @@ export function createDefaultSiteContent({
     features: {
       pwa: false,
       notifications: false,
-      commerce: Boolean(templateDef.commerce),
+      commerce: false,
       dineOs: includeDineOs,
     },
     styles: {},
@@ -363,7 +363,7 @@ export function applyTemplateToContent(content, templateId) {
     styles: normalized.styles || {},
     features: {
       ...fresh.features,
-      commerce: Boolean(templateDef.commerce),
+      commerce: false,
     },
   });
 }
@@ -413,9 +413,10 @@ export function normalizeSiteContent(content) {
       features: {
         pwa: false,
         notifications: false,
-        commerce: Boolean(getTemplate(template).commerce),
-        ...(content.features || {}),
         dineOs: includeDineOs,
+        ...(content.features || {}),
+        // Cart is add-on gated in cart-addon.js — never trust stored template flags alone
+        commerce: false,
       },
     };
   }

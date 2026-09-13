@@ -6,12 +6,40 @@ import { useRouter } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import PackageFlow from "@/components/billing/PackageFlow";
 import SupportChatSidebar from "@/components/messaging/SupportChatSidebar";
+import GoLiveDialog from "@/components/site/GoLiveDialog";
+import RestoreVersionDialog from "@/components/site/RestoreVersionDialog";
+import VersionNameDialog from "@/components/site/VersionNameDialog";
+import DeleteVersionDialog from "@/components/site/DeleteVersionDialog";
+import SiteNameDialog from "@/components/site/SiteNameDialog";
+import BillingBusyOverlay from "@/components/billing/BillingBusyOverlay";
+import PaymentSuccessOverlay from "@/components/billing/PaymentSuccessOverlay";
+
+const MAX_SITE_VERSIONS = 5;
 
 function normalizeSettingsHash(hash) {
-  const h = String(hash || "").toLowerCase();
+  // Collapse accidental doubles like "#billing#billing" from Next.js hash links.
+  const first = String(hash || "")
+    .toLowerCase()
+    .split("#")
+    .map((p) => p.trim())
+    .filter(Boolean)[0];
+  const h = first ? `#${first}` : "";
   if (!h || h === "#" || h === "#profile") return "#account";
   if (h === "#password" || h === "#2fa") return "#security";
   return h;
+}
+
+function profileSectionFromReturn(value, fallback = "#plan") {
+  const next = normalizeSettingsHash(`#${String(value || "").replace(/^#/, "")}`);
+  if (["#plan", "#billing", "#websites", "#account", "#security"].includes(next)) return next;
+  return normalizeSettingsHash(fallback);
+}
+
+function replaceProfileLocation(hash, { keepSearch = false } = {}) {
+  const next = normalizeSettingsHash(hash);
+  const qs = keepSearch ? window.location.search || "" : "";
+  window.history.replaceState(null, "", `/profile${qs}${next}`);
+  return next;
 }
 
 const inputClass =
@@ -28,12 +56,21 @@ export default function ProfilePage() {
   const [invoices, setInvoices] = useState([]);
   const [billingMsg, setBillingMsg] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(null);
   const [activeHash, setActiveHash] = useState("#account");
   const [siteNames, setSiteNames] = useState({});
   const [siteNameBusy, setSiteNameBusy] = useState({});
   const [siteNameStatus, setSiteNameStatus] = useState({});
   const [siteLiveBusy, setSiteLiveBusy] = useState({});
   const [siteLiveStatus, setSiteLiveStatus] = useState({});
+  const [goLivePrompt, setGoLivePrompt] = useState(null);
+  const [restorePrompt, setRestorePrompt] = useState(null);
+  const [versionNamePrompt, setVersionNamePrompt] = useState(null);
+  const [deleteVersionPrompt, setDeleteVersionPrompt] = useState(null);
+  const [createSitePrompt, setCreateSitePrompt] = useState(false);
+  const [siteVersions, setSiteVersions] = useState({});
+  const [versionsBusy, setVersionsBusy] = useState({});
+  const [versionsStatus, setVersionsStatus] = useState({});
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -48,6 +85,11 @@ export default function ProfilePage() {
   const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    const sessionId = params.get("session_id");
+    const fromParam = params.get("from");
+
     (async () => {
       const res = await fetch("/api/profile");
       const data = await res.json();
@@ -69,13 +111,13 @@ export default function ProfilePage() {
       setBilling(data.billing || null);
       setInvoices(data.invoices || []);
 
-      const params = new URLSearchParams(window.location.search);
-      const checkout = params.get("checkout");
-      const sessionId = params.get("session_id");
       if (checkout === "cancel") {
         setBillingMsg("Checkout canceled — no charge was made.");
-        router.replace("/profile#billing");
-      } else if (checkout === "success" && sessionId) {
+        setActiveHash(replaceProfileLocation(profileSectionFromReturn(fromParam, "#plan")));
+        return;
+      }
+
+      if (checkout === "success" && sessionId) {
         setBillingBusy(true);
         try {
           const syncRes = await fetch("/api/billing", {
@@ -88,15 +130,34 @@ export default function ProfilePage() {
             if (syncData.user) setUser(syncData.user);
             if (syncData.billing) setBilling(syncData.billing);
             if (syncData.invoices) setInvoices(syncData.invoices);
-            setBillingMsg(syncData.message || "Payment confirmed — package activated.");
+            const msg = syncData.message || "Payment confirmed — package activated.";
+            setBillingMsg(msg);
+            if (syncData.promptCreateSite) {
+              setCreateSitePrompt(true);
+              setPaymentSuccess({
+                message: msg,
+                nextHash: "#plan",
+                continueLabel: "Continue",
+                invoiceUrl: syncData.invoiceUrl || null,
+              });
+            } else {
+              setPaymentSuccess({
+                message: msg,
+                nextHash: "#billing",
+                continueLabel: "Continue to Billing",
+                invoiceUrl: syncData.invoiceUrl || null,
+              });
+            }
+            window.history.replaceState(null, "", "/profile");
           } else {
             setBillingMsg(syncData.error || "Payment received — refreshing…");
+            setActiveHash(replaceProfileLocation(profileSectionFromReturn(fromParam, "#plan")));
           }
         } catch {
           setBillingMsg("Payment may have succeeded — refresh if status looks wrong.");
+          setActiveHash(replaceProfileLocation(profileSectionFromReturn(fromParam, "#plan")));
         } finally {
           setBillingBusy(false);
-          router.replace("/profile#billing");
         }
       }
     })();
@@ -104,16 +165,26 @@ export default function ProfilePage() {
 
   useEffect(() => {
     function syncHash() {
-      const next = normalizeSettingsHash(window.location.hash);
+      const raw = window.location.hash;
+      const next = normalizeSettingsHash(raw);
       setActiveHash(next);
-      if (window.location.hash !== next) {
-        window.history.replaceState(null, "", `/profile${next}`);
+      // Keep ?checkout=&from= query intact; also rewrite doubled hashes (#billing#billing).
+      if (raw !== next) {
+        replaceProfileLocation(next, { keepSearch: true });
       }
     }
     syncHash();
     window.addEventListener("hashchange", syncHash);
     return () => window.removeEventListener("hashchange", syncHash);
   }, []);
+
+  useEffect(() => {
+    if (activeHash !== "#websites" || !sites.length) return;
+    sites.forEach((item) => {
+      if (siteVersions[item.id] == null) loadSiteVersions(item.id);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once per site when opening Websites
+  }, [activeHash, sites]);
 
   async function saveSiteName(siteId) {
     const brandName = String(siteNames[siteId] || "").trim();
@@ -158,9 +229,11 @@ export default function ProfilePage() {
           return {
             id: s.id,
             slug: s.slug,
+            subdomain: s.subdomain || null,
+            liveUrl: s.liveUrl || null,
             name: s.content?.brand?.name || s.slug,
             status: s.status,
-            template: s.content?.template || "other",
+            template: s.content?.template || existing?.template || "other",
             templateLabel: existing?.templateLabel || "Other",
           };
         }),
@@ -172,6 +245,8 @@ export default function ProfilePage() {
             ? {
                 ...item,
                 status: data.site.status,
+                subdomain: data.site.subdomain || item.subdomain || null,
+                liveUrl: data.liveUrl || item.liveUrl || null,
                 name: data.site.content?.brand?.name || item.name,
               }
             : item,
@@ -185,6 +260,8 @@ export default function ProfilePage() {
           ? {
               ...prev,
               status: data.site.status,
+              subdomain: data.site.subdomain || prev.subdomain || null,
+              liveUrl: data.liveUrl || prev.liveUrl || null,
               name: data.site.content?.brand?.name || prev.name,
             }
           : prev,
@@ -197,14 +274,21 @@ export default function ProfilePage() {
       String(currentStatus || "").toLowerCase(),
     );
     const makeLive = !currentlyLive;
-    if (
-      makeLive &&
-      !window.confirm(
-        "Make this website live? Public visitors can open it. Monthly billing scales with how many sites are live.",
-      )
-    ) {
+    if (makeLive) {
+      const target = sites.find((s) => s.id === siteId);
+      setGoLivePrompt({
+        siteId,
+        name: target?.name || "this website",
+        liveUrlHint: target?.liveUrl
+          ? String(target.liveUrl).replace(/^https?:\/\//, "")
+          : "*.technonaire.site",
+      });
       return;
     }
+    await applySiteLive(siteId, false);
+  }
+
+  async function applySiteLive(siteId, makeLive) {
     setSiteLiveBusy((prev) => ({ ...prev, [siteId]: true }));
     setSiteLiveStatus((prev) => ({ ...prev, [siteId]: "" }));
     try {
@@ -223,6 +307,7 @@ export default function ProfilePage() {
         ...prev,
         [siteId]: data.message || (makeLive ? "Website is live" : "Website offline"),
       }));
+      if (makeLive) await loadSiteVersions(siteId);
     } catch (err) {
       setSiteLiveStatus((prev) => ({
         ...prev,
@@ -230,6 +315,166 @@ export default function ProfilePage() {
       }));
     } finally {
       setSiteLiveBusy((prev) => ({ ...prev, [siteId]: false }));
+      setGoLivePrompt(null);
+    }
+  }
+
+  async function loadSiteVersions(siteId) {
+    if (!siteId) return;
+    try {
+      const res = await fetch(`/api/site/versions?siteId=${siteId}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.versions)) {
+        setSiteVersions((prev) => ({ ...prev, [siteId]: data.versions }));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function saveSiteVersion(siteId) {
+    const existing = siteVersions[siteId] || [];
+    if (existing.length >= MAX_SITE_VERSIONS) return;
+    const target = sites.find((s) => s.id === siteId);
+    setVersionNamePrompt({
+      mode: "save",
+      siteId,
+      siteName: target?.name || "this website",
+      initialLabel: `version-${existing.length + 1}`,
+    });
+  }
+
+  async function confirmVersionName(label) {
+    if (!versionNamePrompt?.siteId) return;
+    const { mode, siteId, versionId } = versionNamePrompt;
+    setVersionsBusy((prev) => ({ ...prev, [siteId]: true }));
+    setVersionsStatus((prev) => ({ ...prev, [siteId]: "" }));
+    try {
+      const res = await fetch("/api/site/versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          mode === "rename"
+            ? { action: "rename", siteId, versionId, label }
+            : { action: "snapshot", siteId, label },
+        ),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.error || (mode === "rename" ? "Could not rename version" : "Could not save version"),
+        );
+      }
+      if (Array.isArray(data.versions)) {
+        setSiteVersions((prev) => ({ ...prev, [siteId]: data.versions }));
+      }
+      setVersionsStatus((prev) => ({
+        ...prev,
+        [siteId]:
+          data.message || (mode === "rename" ? "Version renamed" : "Version saved"),
+      }));
+    } catch (err) {
+      setVersionsStatus((prev) => ({
+        ...prev,
+        [siteId]: err.message || "Version update failed",
+      }));
+    } finally {
+      setVersionsBusy((prev) => ({ ...prev, [siteId]: false }));
+      setVersionNamePrompt(null);
+    }
+  }
+
+  function requestRenameVersion(siteId, version) {
+    const target = sites.find((s) => s.id === siteId);
+    setVersionNamePrompt({
+      mode: "rename",
+      siteId,
+      versionId: version.id,
+      siteName: target?.name || "this website",
+      initialLabel: version.label || "Snapshot",
+    });
+  }
+
+  function requestDeleteVersion(siteId, version) {
+    setDeleteVersionPrompt({
+      siteId,
+      versionId: version.id,
+      versionLabel: version.label || "Snapshot",
+    });
+  }
+
+  async function confirmDeleteVersion() {
+    if (!deleteVersionPrompt?.siteId || !deleteVersionPrompt?.versionId) return;
+    const { siteId, versionId } = deleteVersionPrompt;
+    setVersionsBusy((prev) => ({ ...prev, [siteId]: true }));
+    setVersionsStatus((prev) => ({ ...prev, [siteId]: "" }));
+    try {
+      const res = await fetch("/api/site/versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", siteId, versionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not delete version");
+      if (Array.isArray(data.versions)) {
+        setSiteVersions((prev) => ({ ...prev, [siteId]: data.versions }));
+      }
+      setVersionsStatus((prev) => ({
+        ...prev,
+        [siteId]: data.message || "Version deleted",
+      }));
+    } catch (err) {
+      setVersionsStatus((prev) => ({
+        ...prev,
+        [siteId]: err.message || "Could not delete version",
+      }));
+    } finally {
+      setVersionsBusy((prev) => ({ ...prev, [siteId]: false }));
+      setDeleteVersionPrompt(null);
+    }
+  }
+
+  function requestRestoreVersion(siteId, version) {
+    const target = sites.find((s) => s.id === siteId);
+    setRestorePrompt({
+      siteId,
+      versionId: version.id,
+      siteName: target?.name || "this website",
+      versionLabel: version.label || "Snapshot",
+      versionDate: version.createdAt
+        ? new Date(version.createdAt).toLocaleString()
+        : null,
+    });
+  }
+
+  async function confirmRestoreVersion() {
+    if (!restorePrompt?.siteId || !restorePrompt?.versionId) return;
+    const { siteId, versionId } = restorePrompt;
+    setVersionsBusy((prev) => ({ ...prev, [siteId]: true }));
+    setVersionsStatus((prev) => ({ ...prev, [siteId]: "" }));
+    try {
+      const res = await fetch("/api/site/versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore", siteId, versionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not restore version");
+      if (Array.isArray(data.versions)) {
+        setSiteVersions((prev) => ({ ...prev, [siteId]: data.versions }));
+      }
+      setVersionsStatus((prev) => ({
+        ...prev,
+        [siteId]: data.message || "Version restored",
+      }));
+    } catch (err) {
+      setVersionsStatus((prev) => ({
+        ...prev,
+        [siteId]: err.message || "Could not restore version",
+      }));
+    } finally {
+      setVersionsBusy((prev) => ({ ...prev, [siteId]: false }));
+      setRestorePrompt(null);
     }
   }
 
@@ -311,14 +556,20 @@ export default function ProfilePage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not create website");
+        setCreateSitePrompt(false);
         if (data.user) setUser(data.user);
+        if (Array.isArray(data.sites)) {
+          applySitesFromResponse(data, data.site?.id);
+        }
         if (data.site) {
+          const nextName = data.site.content?.brand?.name || data.site.slug;
           setSite({
             id: data.site.id,
             slug: data.site.slug,
-            name: data.site.content?.brand?.name || data.site.slug,
+            name: nextName,
             status: data.site.status,
           });
+          setSiteNames((prev) => ({ ...prev, [data.site.id]: nextName }));
         }
         const billRes = await fetch("/api/billing");
         if (billRes.ok) {
@@ -335,6 +586,17 @@ export default function ProfilePage() {
       if (action === "subscribe" || action === "checkout") body.planId = id;
       if (action === "buy-addon") body.addonId = id;
       if (action === "buy-site-slot" && id) body.slotPlanId = id;
+      if (
+        action === "subscribe" ||
+        action === "checkout" ||
+        action === "buy-addon" ||
+        action === "buy-site-slot"
+      ) {
+        body.returnTo =
+          String(extra.returnTo || window.location.hash || activeHash || "#plan")
+            .replace(/^#/, "")
+            .trim() || "plan";
+      }
 
       const res = await fetch("/api/billing", {
         method: "POST",
@@ -354,20 +616,27 @@ export default function ProfilePage() {
       if (data.user) setUser(data.user);
       if (data.billing) setBilling(data.billing);
       if (data.invoices) setInvoices(data.invoices);
-      setBillingMsg(
+      const msg =
         data.message ||
-          (data.upgraded
-            ? "Upgraded — you paid the difference now."
-            : action === "subscribe"
-              ? "Opening Stripe…"
-              : action === "buy-addon" || action === "buy-site-slot"
-                ? "Opening Stripe…"
-                : action === "cancel"
-                  ? "Subscription set to cancel at period end. You keep access until then."
-                  : "Updated"),
-      );
-      if (action === "subscribe" && data.invoiceUrl) {
-        router.push(data.invoiceUrl);
+        (data.upgraded
+          ? "Upgraded — you paid the difference now."
+          : data.downgraded
+            ? "Switched to a lower package — no charge now."
+            : action === "cancel"
+              ? "Subscription set to cancel at period end. You keep access until then."
+              : "Updated");
+      setBillingMsg(msg);
+      if (
+        action !== "cancel" &&
+        action !== "portal" &&
+        (data.upgraded || data.downgraded || data.changed || data.invoiceUrl)
+      ) {
+        setPaymentSuccess({
+          message: msg,
+          nextHash: "#billing",
+          continueLabel: "Continue to Billing",
+          invoiceUrl: data.invoiceUrl || null,
+        });
         return;
       }
     } catch (err) {
@@ -532,7 +801,7 @@ export default function ProfilePage() {
                     Websites
                   </h1>
                   <p className="mt-1 text-sm text-blue-100/80">
-                    Manage your websites, names, publishing status, and template choices.
+                    Manage your websites, names, publishing, live address, and version history.
                   </p>
                 </div>
                 <div className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-blue-100">
@@ -564,6 +833,8 @@ export default function ProfilePage() {
                     const liveBusy = Boolean(siteLiveBusy[item.id]);
                     const liveStatus = siteLiveStatus[item.id];
                     const showLiveControls = canGoLive || published;
+                    const versionCount = (siteVersions[item.id] || []).length;
+                    const atVersionLimit = versionCount >= MAX_SITE_VERSIONS;
                     return (
                       <div
                         key={item.id}
@@ -624,24 +895,53 @@ export default function ProfilePage() {
                         </div>
 
                         {showLiveControls ? (
-                          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4">
-                            <button
-                              type="button"
-                              disabled={liveBusy}
-                              onClick={() => toggleSiteLive(item.id, item.status)}
-                              className={`rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-60 ${
-                                published
-                                  ? "border border-amber-400/40 text-amber-100 hover:bg-amber-500/10"
-                                  : "border border-emerald-400/40 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25"
-                              }`}
-                            >
-                              {liveBusy ? "Updating…" : published ? "Take offline" : "Go live"}
-                            </button>
-                            {liveStatus ? (
-                              <p className="text-xs text-cyan-200">{liveStatus}</p>
+                          <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <button
+                                type="button"
+                                disabled={liveBusy}
+                                onClick={() => toggleSiteLive(item.id, item.status)}
+                                className={`rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-60 ${
+                                  published
+                                    ? "border border-amber-400/40 text-amber-100 hover:bg-amber-500/10"
+                                    : "border border-emerald-400/40 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25"
+                                }`}
+                              >
+                                {liveBusy ? "Updating…" : published ? "Take offline" : "Go live"}
+                              </button>
+                              {liveStatus ? (
+                                <p className="text-xs text-cyan-200">{liveStatus}</p>
+                              ) : null}
+                            </div>
+                            {item.liveUrl ? (
+                              <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 px-3 py-2">
+                                <p className="text-[11px] font-semibold tracking-[0.14em] text-emerald-200/80 uppercase">
+                                  Live address
+                                </p>
+                                <a
+                                  href={item.liveUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-1 block break-all text-sm font-medium text-emerald-100 underline-offset-2 hover:underline"
+                                >
+                                  {item.liveUrl.replace(/^https?:\/\//, "")}
+                                </a>
+                              </div>
                             ) : null}
                           </div>
-                        ) : null}
+                        ) : (
+                          <div className="mt-4 border-t border-white/10 pt-4">
+                            <p className="text-xs text-blue-100/70">
+                              Subscribe to Starter to publish on a random.technonaire.site address.
+                            </p>
+                            <a
+                              href="#plan"
+                              className="mt-2 inline-flex rounded-full border border-cyan-400/40 bg-cyan-500/15 px-4 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-500/25"
+                            >
+                              Upgrade to Starter
+                            </a>
+                          </div>
+                        )}
 
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
                           <div>
@@ -656,6 +956,92 @@ export default function ProfilePage() {
                             </p>
                             <p className="mt-1 text-sm text-blue-100/80">{item.template || "other"}</p>
                           </div>
+                        </div>
+
+                        <div className="mt-4 border-t border-white/10 pt-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[11px] font-semibold tracking-[0.14em] text-white/40 uppercase">
+                              Version history
+                            </p>
+                            <button
+                              type="button"
+                              disabled={
+                                Boolean(versionsBusy[item.id]) || !canGoLive || atVersionLimit
+                              }
+                              onClick={() => saveSiteVersion(item.id)}
+                              className="rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-blue-100 hover:bg-white/5 disabled:opacity-50"
+                              title={
+                                !canGoLive
+                                  ? "Available on paid plans"
+                                  : atVersionLimit
+                                    ? `Limit of ${MAX_SITE_VERSIONS} versions reached — delete one to save another`
+                                    : "Save a snapshot of the current site"
+                              }
+                            >
+                              {versionsBusy[item.id] ? "Saving…" : "Save version"}
+                            </button>
+                          </div>
+                          <p className="mt-1 text-xs text-blue-100/60">
+                            {atVersionLimit
+                              ? `${MAX_SITE_VERSIONS} versions saved — delete one to save another.`
+                              : `Keeps up to ${MAX_SITE_VERSIONS} versions. Going live also saves a snapshot.`}
+                          </p>
+                          {versionsStatus[item.id] ? (
+                            <p className="mt-2 text-xs text-cyan-200">{versionsStatus[item.id]}</p>
+                          ) : null}
+                          {!canGoLive ? (
+                            <p className="mt-2 text-xs text-blue-100/70">
+                              Upgrade to Starter to save and restore versions.
+                            </p>
+                          ) : (siteVersions[item.id] || []).length === 0 ? (
+                            <p className="mt-2 text-xs text-blue-100/70">No versions yet.</p>
+                          ) : (
+                            <ul className="mt-3 space-y-2">
+                              {(siteVersions[item.id] || []).map((v) => (
+                                <li
+                                  key={v.id}
+                                  className="rounded-lg border border-white/10 bg-[#040b1a]/50 px-3 py-2"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-white">
+                                      {v.label || "Snapshot"}
+                                    </p>
+                                    <p className="text-[11px] text-blue-100/60">
+                                      {v.createdAt
+                                        ? new Date(v.createdAt).toLocaleString()
+                                        : "—"}
+                                    </p>
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={Boolean(versionsBusy[item.id])}
+                                      onClick={() => requestRestoreVersion(item.id, v)}
+                                      className="rounded-full border border-cyan-400/30 px-3 py-1.5 text-[11px] font-semibold text-cyan-100 hover:bg-cyan-500/10 disabled:opacity-50"
+                                    >
+                                      Restore
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={Boolean(versionsBusy[item.id])}
+                                      onClick={() => requestRenameVersion(item.id, v)}
+                                      className="rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-blue-100 hover:bg-white/5 disabled:opacity-50"
+                                    >
+                                      Rename
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={Boolean(versionsBusy[item.id])}
+                                      onClick={() => requestDeleteVersion(item.id, v)}
+                                      className="rounded-full border border-rose-400/30 px-3 py-1.5 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
 
                         {current ? (
@@ -888,7 +1274,10 @@ export default function ProfilePage() {
                     invoices={invoices}
                     busy={billingBusy}
                     message={billingMsg}
-                    onAction={billingAction}
+                    onAction={(action, id, extra = {}) =>
+                      billingAction(action, id, { ...extra, returnTo: "plan" })
+                    }
+                    onCreateSiteRequest={() => setCreateSitePrompt(true)}
                     onContactUs={() => setShowChat(true)}
                   />
                 </div>
@@ -916,7 +1305,9 @@ export default function ProfilePage() {
                   invoices={invoices}
                   busy={billingBusy}
                   message={billingMsg}
-                  onAction={billingAction}
+                  onAction={(action, id, extra = {}) =>
+                    billingAction(action, id, { ...extra, returnTo: "billing" })
+                  }
                 />
               </div>
             </section>
@@ -927,6 +1318,79 @@ export default function ProfilePage() {
       {user.role === "owner" ? (
         <SupportChatSidebar open={showChat} onClose={() => setShowChat(false)} />
       ) : null}
+
+      <GoLiveDialog
+        open={Boolean(goLivePrompt)}
+        siteName={goLivePrompt?.name || "this website"}
+        liveUrlHint={goLivePrompt?.liveUrlHint || null}
+        busy={Boolean(goLivePrompt && siteLiveBusy[goLivePrompt.siteId])}
+        onCancel={() => setGoLivePrompt(null)}
+        onConfirm={() => {
+          if (!goLivePrompt?.siteId) return;
+          applySiteLive(goLivePrompt.siteId, true);
+        }}
+      />
+
+      <RestoreVersionDialog
+        open={Boolean(restorePrompt)}
+        siteName={restorePrompt?.siteName || "this website"}
+        versionLabel={restorePrompt?.versionLabel || "Snapshot"}
+        versionDate={restorePrompt?.versionDate || null}
+        busy={Boolean(restorePrompt && versionsBusy[restorePrompt.siteId])}
+        onCancel={() => setRestorePrompt(null)}
+        onConfirm={confirmRestoreVersion}
+      />
+
+      <VersionNameDialog
+        open={Boolean(versionNamePrompt)}
+        title={versionNamePrompt?.mode === "rename" ? "Rename version" : "Save version"}
+        description={
+          versionNamePrompt?.mode === "rename"
+            ? `Update the name for this snapshot of ${versionNamePrompt?.siteName || "your website"}.`
+            : `Name this snapshot of ${versionNamePrompt?.siteName || "your website"} so you can find it later.`
+        }
+        initialLabel={versionNamePrompt?.initialLabel || ""}
+        confirmLabel={versionNamePrompt?.mode === "rename" ? "Rename" : "Save version"}
+        busyLabel={versionNamePrompt?.mode === "rename" ? "Renaming…" : "Saving…"}
+        busy={Boolean(versionNamePrompt && versionsBusy[versionNamePrompt.siteId])}
+        onCancel={() => setVersionNamePrompt(null)}
+        onConfirm={confirmVersionName}
+      />
+
+      <DeleteVersionDialog
+        open={Boolean(deleteVersionPrompt)}
+        versionLabel={deleteVersionPrompt?.versionLabel || "this version"}
+        busy={Boolean(deleteVersionPrompt && versionsBusy[deleteVersionPrompt.siteId])}
+        onCancel={() => setDeleteVersionPrompt(null)}
+        onConfirm={confirmDeleteVersion}
+      />
+
+      <SiteNameDialog
+        open={createSitePrompt}
+        busy={billingBusy}
+        onCancel={() => {
+          if (!billingBusy) setCreateSitePrompt(false);
+        }}
+        onConfirm={(brandName) => billingAction("create-site", null, { brandName })}
+      />
+
+      <BillingBusyOverlay open={billingBusy && !paymentSuccess} message="Loading…" />
+
+      <PaymentSuccessOverlay
+        open={Boolean(paymentSuccess)}
+        message={paymentSuccess?.message || "Payment successful"}
+        continueLabel={paymentSuccess?.continueLabel || "Continue to Billing"}
+        invoiceUrl={paymentSuccess?.invoiceUrl || null}
+        onViewInvoice={(url) => {
+          setPaymentSuccess(null);
+          window.location.assign(url);
+        }}
+        onContinue={() => {
+          const next = profileSectionFromReturn(paymentSuccess?.nextHash, "#billing");
+          setPaymentSuccess(null);
+          setActiveHash(replaceProfileLocation(next));
+        }}
+      />
     </div>
   );
 }

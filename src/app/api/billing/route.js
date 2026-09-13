@@ -12,6 +12,7 @@ import {
   createBillingPortal,
   createStripeAddonCheckout,
   createStripeCheckout,
+  fetchCardOnFile,
   listInvoicesForUser,
   listPaidAddonIds,
   markInvoicePaid,
@@ -26,9 +27,10 @@ async function billingForUser(user) {
   const sitesUsed = user.role === "owner" ? await countSitesByOwner(user.id) : 0;
   const liveSites = user.role === "owner" ? await countLiveSitesByOwner(user.id) : 0;
   const purchasedAddonIds = user.role === "owner" ? await listPaidAddonIds(user.id) : [];
+  const cardOnFile = user.role === "owner" ? await fetchCardOnFile(fresh) : null;
   return {
     user: fresh,
-    billing: billingPublicFields(fresh, { sitesUsed, liveSites, purchasedAddonIds }),
+    billing: billingPublicFields(fresh, { sitesUsed, liveSites, purchasedAddonIds, cardOnFile }),
   };
 }
 
@@ -66,28 +68,33 @@ export async function POST(request) {
         return NextResponse.json({ error: "Only owners can subscribe" }, { status: 403 });
       }
       const planId = String(body.planId || "starter").trim();
+      const returnTo = body.returnTo;
 
       if (isStripeConfigured()) {
-        const result = await createStripeCheckout(user.id, planId);
-        if (result.upgraded) {
+        const result = await createStripeCheckout(user.id, planId, { returnTo });
+        if (result.url) {
           return NextResponse.json({
-            upgraded: true,
-            user: result.user,
-            billing: result.billing,
+            checkoutUrl: result.url,
+            sessionId: result.sessionId,
             invoice: result.invoice,
             plan: result.plan,
-            differenceCents: result.differenceCents,
             invoices: await listInvoicesForUser(user.id),
-            message: result.message,
+            message: "Redirecting to Stripe Checkout…",
           });
         }
+        const enriched = await billingForUser(result.user);
         return NextResponse.json({
-          checkoutUrl: result.url,
-          sessionId: result.sessionId,
+          upgraded: Boolean(result.upgraded),
+          downgraded: Boolean(result.downgraded),
+          changed: true,
+          user: enriched.user,
+          billing: enriched.billing,
           invoice: result.invoice,
+          invoiceUrl: result.invoice?.id ? `/invoice/${result.invoice.id}` : null,
           plan: result.plan,
+          differenceCents: result.differenceCents ?? 0,
           invoices: await listInvoicesForUser(user.id),
-          message: "Redirecting to Stripe Checkout…",
+          message: result.message || "Plan updated.",
         });
       }
 
@@ -111,7 +118,7 @@ export async function POST(request) {
         return NextResponse.json({ error: "Stripe is not configured" }, { status: 400 });
       }
       const slotPlanId = body.slotPlanId ? String(body.slotPlanId).trim() : null;
-      const result = await buyExtraSiteSlot(user.id, slotPlanId);
+      const result = await buyExtraSiteSlot(user.id, slotPlanId, { returnTo: body.returnTo });
       return NextResponse.json({
         checkoutUrl: result.url,
         sessionId: result.sessionId,
@@ -127,7 +134,9 @@ export async function POST(request) {
       if (!isStripeConfigured()) {
         return NextResponse.json({ error: "Stripe is not configured" }, { status: 400 });
       }
-      const result = await createStripeAddonCheckout(user.id, addonId);
+      const result = await createStripeAddonCheckout(user.id, addonId, {
+        returnTo: body.returnTo,
+      });
       return NextResponse.json({
         checkoutUrl: result.url,
         sessionId: result.sessionId,
@@ -152,12 +161,21 @@ export async function POST(request) {
       }
       const sitesUsed = await countSitesByOwner(user.id);
       const liveSites = await countLiveSitesByOwner(user.id);
+      const billing = billingPublicFields(result.user, { sitesUsed, liveSites });
+      const isSiteSlot = result.addonId === "site_plus_1";
       return NextResponse.json({
         user: result.user,
-        billing: billingPublicFields(result.user, { sitesUsed, liveSites }),
+        billing,
         invoices: result.invoices,
-        message:
-          result.kind === "addon" || result.kind === "payment"
+        invoice: result.invoice || null,
+        invoiceUrl: result.invoiceUrl || null,
+        addonId: result.addonId || null,
+        kind: result.kind || null,
+        returnTo: result.returnTo || null,
+        promptCreateSite: Boolean(isSiteSlot && billing?.canCreateSite),
+        message: isSiteSlot
+          ? "Payment confirmed — name your second website to finish setup."
+          : result.kind === "addon" || result.kind === "payment"
             ? "Payment confirmed — website slots added."
             : "Payment confirmed — package activated.",
       });

@@ -8,14 +8,28 @@ import {
   updateUserPayment,
   updateUserProfile,
 } from "@/lib/auth";
-import { billingPublicFields, listInvoicesForUser, listPaidAddonIds } from "@/lib/billing";
+import { billingPublicFields, fetchCardOnFile, listInvoicesForUser, listPaidAddonIds } from "@/lib/billing";
 import {
   countLiveSitesByOwner,
   countSitesByOwner,
   getSiteById,
   listSitesByOwner,
+  sitePublicUrl,
 } from "@/lib/store-actions";
 import { getTemplate } from "@/lib/templates";
+
+function mapOwnerSite(s) {
+  return {
+    id: s.id,
+    slug: s.slug,
+    subdomain: s.subdomain || null,
+    liveUrl: sitePublicUrl(s),
+    name: s.content?.brand?.name || s.slug,
+    status: s.status,
+    template: s.content?.template || "other",
+    templateLabel: getTemplate(s.content?.template || "other").label,
+  };
+}
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -30,33 +44,18 @@ export async function GET() {
   const sitesUsed = user.role === "owner" ? await countSitesByOwner(user.id) : 0;
   const liveSites = user.role === "owner" ? await countLiveSitesByOwner(user.id) : 0;
   const purchasedAddonIds = user.role === "owner" ? await listPaidAddonIds(user.id) : [];
+  const cardOnFile = user.role === "owner" ? await fetchCardOnFile(fresh) : null;
   const ownerSites =
     user.role === "owner"
-      ? (await listSitesByOwner(user.id)).map((s) => ({
-          id: s.id,
-          slug: s.slug,
-          name: s.content?.brand?.name || s.slug,
-          status: s.status,
-          template: s.content?.template || "other",
-          templateLabel: getTemplate(s.content?.template || "other").label,
-        }))
+      ? (await listSitesByOwner(user.id)).map(mapOwnerSite)
       : [];
 
   return NextResponse.json({
     user: fresh,
-    billing: billingPublicFields(fresh, { sitesUsed, liveSites, purchasedAddonIds }),
+    billing: billingPublicFields(fresh, { sitesUsed, liveSites, purchasedAddonIds, cardOnFile }),
     invoices: await listInvoicesForUser(user.id),
     sites: ownerSites,
-    site: site
-      ? {
-          id: site.id,
-          slug: site.slug,
-          name: site.content?.brand?.name || site.slug,
-          status: site.status,
-          template: site.content?.template || "other",
-          templateLabel: getTemplate(site.content?.template || "other").label,
-        }
-      : null,
+    site: site ? mapOwnerSite(site) : null,
   });
 }
 
