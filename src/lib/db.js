@@ -76,6 +76,9 @@ async function ensureBillingColumns() {
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'domain';
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS stripe_session_id TEXT NULL;
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS addon_id TEXT NULL;
+    ALTER TABLE sites ADD COLUMN IF NOT EXISTS custom_domain TEXT NULL;
+    ALTER TABLE sites ADD COLUMN IF NOT EXISTS domain_status TEXT NOT NULL DEFAULT 'none';
+    ALTER TABLE sites ADD COLUMN IF NOT EXISTS domain_verified_at TIMESTAMPTZ NULL;
   `,
     )
     .catch((error) => {

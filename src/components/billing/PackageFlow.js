@@ -24,15 +24,15 @@ function formatDate(value) {
 function featureList(features) {
   const address =
     features?.technonaireAddress === "random"
-      ? "random.technonaire.site"
+      ? "Random Technonaire address"
       : features?.technonaireAddress === "chosen"
-        ? "Chosen Technonaire address"
+        ? "Choose your .technonaire.site address"
         : null;
   return [
     features?.live ? "Publishing" : null,
     features?.hosting ? "Hosting + SSL" : null,
     address,
-    features?.domain ? "Custom domain" : null,
+    features?.domain ? "Your own domain (DNS setup)" : null,
     features?.pwa ? "PWA app" : null,
     features?.premiumTemplates ? "All templates" : null,
     features?.templateSwitch ? "Editor · switch templates" : null,

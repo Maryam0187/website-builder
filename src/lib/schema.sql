@@ -113,12 +113,18 @@ CREATE TABLE IF NOT EXISTS sites (
   owner_id         BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
   status           TEXT NOT NULL DEFAULT 'draft',
   subdomain        TEXT NULL,
+  custom_domain    TEXT NULL,
+  domain_status    TEXT NOT NULL DEFAULT 'none',
+  domain_verified_at TIMESTAMPTZ NULL,
   content          JSONB NOT NULL DEFAULT '{}',
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS subdomain TEXT;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS custom_domain TEXT;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS domain_status TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS domain_verified_at TIMESTAMPTZ NULL;
 
 CREATE TABLE IF NOT EXISTS site_versions (
   id           BIGSERIAL PRIMARY KEY,

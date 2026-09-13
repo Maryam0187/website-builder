@@ -93,6 +93,9 @@ function mapSite(row) {
     id: Number(row.id),
     slug: row.slug,
     subdomain: row.subdomain || null,
+    customDomain: row.custom_domain || null,
+    domainStatus: row.domain_status || "none",
+    domainVerifiedAt: row.domain_verified_at || null,
     conversationId: row.conversation_id == null ? null : Number(row.conversation_id),
     ownerId: row.owner_id == null ? null : Number(row.owner_id),
     status: row.status,
@@ -692,7 +695,9 @@ export async function getSiteBySubdomain(subdomain) {
 }
 
 /**
- * Ensure a random Technonaire subdomain exists for Starter hosting.
+ * Ensure a Technonaire subdomain exists for hosting.
+ * - Starter plan: assigns a random subdomain if none exists
+ * - Custom plan: site should already have a chosen subdomain; if missing, assigns random as fallback
  * Keeps an existing subdomain stable across take-offline / go-live.
  */
 export async function ensureSiteSubdomain(siteId) {
@@ -703,6 +708,8 @@ export async function ensureSiteSubdomain(siteId) {
   if (!existing) throw new Error("Site not found");
   if (existing.subdomain) return existing;
 
+  // Custom plan users should have chosen their subdomain already
+  // But if missing, we'll assign a random one as fallback for Starter compatibility
   for (let attempt = 0; attempt < 12; attempt++) {
     const label = generateRandomSubdomain();
     if (isReservedSubdomain(label)) continue;
@@ -726,8 +733,15 @@ export async function ensureSiteSubdomain(siteId) {
 }
 
 export function sitePublicUrl(site) {
-  if (!site?.subdomain) return null;
-  return publicUrlForSubdomain(site.subdomain);
+  // Domain plan: use custom domain if verified
+  if (site?.customDomain && site?.domainStatus === "verified") {
+    return `https://${site.customDomain}`;
+  }
+  // Custom/Starter plan: use Technonaire subdomain
+  if (site?.subdomain) {
+    return publicUrlForSubdomain(site.subdomain);
+  }
+  return null;
 }
 
 function mapSiteVersion(row) {

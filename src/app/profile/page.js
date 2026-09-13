@@ -11,6 +11,8 @@ import RestoreVersionDialog from "@/components/site/RestoreVersionDialog";
 import VersionNameDialog from "@/components/site/VersionNameDialog";
 import DeleteVersionDialog from "@/components/site/DeleteVersionDialog";
 import SiteNameDialog from "@/components/site/SiteNameDialog";
+import SubdomainPicker from "@/components/site/SubdomainPicker";
+import CustomDomainSetup from "@/components/site/CustomDomainSetup";
 import BillingBusyOverlay from "@/components/billing/BillingBusyOverlay";
 import PaymentSuccessOverlay from "@/components/billing/PaymentSuccessOverlay";
 
@@ -104,9 +106,22 @@ export default function ProfilePage() {
       setUser(data.user);
       setTotpAskLife(data.user.totpAskLife || "every");
       setSite(data.site || null);
-      setSites(data.sites || []);
+      const mappedSites = (data.sites || []).map((item) => ({
+        id: item.id,
+        slug: item.slug,
+        subdomain: item.subdomain || null,
+        customDomain: item.customDomain || null,
+        domainStatus: item.domainStatus || "none",
+        domainVerifiedAt: item.domainVerifiedAt || null,
+        liveUrl: item.liveUrl || null,
+        name: item.content?.brand?.name || item.name || item.slug,
+        status: item.status,
+        template: item.content?.template || "other",
+        templateLabel: item.templateLabel || "Other",
+      }));
+      setSites(mappedSites);
       setSiteNames(
-        Object.fromEntries((data.sites || []).map((item) => [item.id, item.name || ""])),
+        Object.fromEntries(mappedSites.map((item) => [item.id, item.name || ""])),
       );
       setBilling(data.billing || null);
       setInvoices(data.invoices || []);
@@ -230,6 +245,9 @@ export default function ProfilePage() {
             id: s.id,
             slug: s.slug,
             subdomain: s.subdomain || null,
+            customDomain: s.customDomain || null,
+            domainStatus: s.domainStatus || "none",
+            domainVerifiedAt: s.domainVerifiedAt || null,
             liveUrl: s.liveUrl || null,
             name: s.content?.brand?.name || s.slug,
             status: s.status,
@@ -246,6 +264,9 @@ export default function ProfilePage() {
                 ...item,
                 status: data.site.status,
                 subdomain: data.site.subdomain || item.subdomain || null,
+                customDomain: data.site.customDomain || item.customDomain || null,
+                domainStatus: data.site.domainStatus || item.domainStatus || "none",
+                domainVerifiedAt: data.site.domainVerifiedAt || item.domainVerifiedAt || null,
                 liveUrl: data.liveUrl || item.liveUrl || null,
                 name: data.site.content?.brand?.name || item.name,
               }
@@ -261,6 +282,8 @@ export default function ProfilePage() {
               ...prev,
               status: data.site.status,
               subdomain: data.site.subdomain || prev.subdomain || null,
+              customDomain: data.site.customDomain || prev.customDomain || null,
+              domainStatus: data.site.domainStatus || prev.domainStatus || "none",
               liveUrl: data.liveUrl || prev.liveUrl || null,
               name: data.site.content?.brand?.name || prev.name,
             }
@@ -928,6 +951,45 @@ export default function ProfilePage() {
                                 </a>
                               </div>
                             ) : null}
+
+                            {/* Custom plan: Choose subdomain */}
+                            {billing?.features?.technonaireAddress === "chosen" && (
+                              <div className="space-y-2 border-t border-white/10 pt-3">
+                                <h5 className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">
+                                  Custom address
+                                </h5>
+                                <SubdomainPicker
+                                  siteId={item.id}
+                                  currentSubdomain={item.subdomain}
+                                  canEdit={canGoLive}
+                                  onUpdate={(data) => {
+                                    if (data.site) {
+                                      applySitesFromResponse(data, item.id);
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {/* Domain plan: Custom domain setup */}
+                            {billing?.features?.domain && (
+                              <div className="space-y-2 border-t border-white/10 pt-3">
+                                <h5 className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">
+                                  Custom domain
+                                </h5>
+                                <CustomDomainSetup
+                                  siteId={item.id}
+                                  currentDomain={item.customDomain}
+                                  domainStatus={item.domainStatus}
+                                  canEdit={canGoLive}
+                                  onUpdate={(data) => {
+                                    if (data.site) {
+                                      applySitesFromResponse(data, item.id);
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="mt-4 border-t border-white/10 pt-4">
