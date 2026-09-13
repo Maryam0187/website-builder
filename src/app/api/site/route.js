@@ -22,7 +22,14 @@ import { setOwnerSiteLive } from "@/lib/billing";
 
 function withLiveUrl(site) {
   if (!site) return site;
-  return { ...site, liveUrl: sitePublicUrl(site) };
+  return { 
+    ...site, 
+    liveUrl: sitePublicUrl(site),
+    // Include domain fields for UI
+    customDomain: site.customDomain || null,
+    domainStatus: site.domainStatus || "none",
+    domainVerifiedAt: site.domainVerifiedAt || null,
+  };
 }
 
 export async function GET(request) {

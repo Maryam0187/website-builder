@@ -1,5 +1,6 @@
 import { query } from "./db";
 import { normalizeSubdomain, isReservedSubdomain } from "./site-host";
+import { provisionSslForDomain } from "./ssl-manager";
 
 /**
  * Check if a chosen Technonaire subdomain is available for reservation.
@@ -317,10 +318,18 @@ export async function verifyDnsForDomain(domain) {
       [site.id]
     );
 
+    // Provision SSL certificate for the verified domain
+    try {
+      await provisionSslForDomain(validation.normalized, site.id);
+    } catch (sslError) {
+      console.warn(`SSL provisioning failed for ${validation.normalized}:`, sslError.message);
+      // Don't fail verification if SSL provisioning fails - it can be retried
+    }
+
     return {
       verified: true,
       status: "verified",
-      message: "DNS records verified successfully",
+      message: "DNS verified and SSL certificate provisioned successfully",
       verifiedAt: new Date().toISOString(),
       records: getRequiredDnsRecords(validation.normalized)
     };

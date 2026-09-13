@@ -676,7 +676,16 @@ export async function setOwnerSiteLive(userId, siteId, live) {
       );
     }
 
-    if (features.technonaireAddress === "random" || features.technonaireAddress === "chosen") {
+    // Domain plan: require verified custom domain OR Technonaire subdomain
+    if (features.domain && site.customDomain) {
+      if (site.domainStatus !== "verified") {
+        throw new Error(
+          "Your custom domain must be verified before publishing. Complete DNS setup in your website settings.",
+        );
+      }
+      // Domain is verified, no need for subdomain
+    } else if (features.technonaireAddress === "random" || features.technonaireAddress === "chosen") {
+      // Starter/Custom plan: ensure subdomain exists
       site = await ensureSiteSubdomain(site.id);
     }
 

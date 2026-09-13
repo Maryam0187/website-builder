@@ -92,15 +92,33 @@ Redeploy after setting variables.
 Railway → Settings → Domains → `.up.railway.app` or `builder.technonaire.com`.
 
 ### 4b. Customer live hosts (`*.technonaire.site`)
+
+#### Starter Plan (Random Subdomain)
 Starter sites publish to a random address like `https://a1b2c3d4.technonaire.site`.
 
+#### Custom Plan (Chosen Subdomain)
+Custom plan users choose their subdomain like `https://mybusiness.technonaire.site`.
+
+#### Domain Plan (Custom Domain)
+Domain plan users bring their own domain like `https://mybusiness.com`.
+
+**Railway Wildcard Setup:**
 1. Own the domain `technonaire.site`
 2. Railway → Domains → add `technonaire.site` and `*.technonaire.site` (wildcard)
 3. DNS: CNAME/A for apex + wildcard as Railway instructs
 4. Enable TLS / wildcard certificate for `*.technonaire.site`
 5. Set `SITE_HOST_ROOT` and `NEXT_PUBLIC_SITE_HOST_ROOT` to `technonaire.site`
 
-Locally, Preview still uses `/site/{slug}`. Live URLs show as `https://{subdomain}.technonaire.site` once assigned.
+**Custom Domains:**
+- Middleware routes custom domains to sites via `custom_domain` column
+- DNS verification simulates propagation delay (30s for sandbox)
+- SSL auto-provisioning via `ssl-manager.js` (stub for production Let's Encrypt)
+- Domain health monitoring in `domain-health.js` (background job ready)
+
+Locally, Preview still uses `/site/{slug}`. Live URLs show as:
+- Starter: `https://{random}.technonaire.site`
+- Custom: `https://{chosen}.technonaire.site`
+- Domain: `https://{custom-domain}`
 
 ### 5. Point agency (Netlify)
 
