@@ -213,8 +213,7 @@ export default function PackageFlow({
                 Everyone starts on Free. Subscribe to Starter ($9), Custom ($19), Domain ($29), or
                 Pro + PWA ($39) to publish and host. Already subscribed? Upgrade charges only the
                 difference on your saved card. Downgrade switches plans with no charge now — the
-                lower price starts next month. Add a 2nd website on any plan — Free $5/mo, Starter
-                $7/mo, Custom $15/mo, Domain $24/mo, Pro $34/mo.
+                lower price starts next month. Additional websites available at discounted monthly prices.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -553,7 +552,7 @@ export default function PackageFlow({
       <PlanChangeDialog
         open={Boolean(planChangePrompt)}
         eyebrow={
-          planChangePrompt?.mode === "buy-slot" ? "Additional website" : "Plan"
+          planChangePrompt?.mode === "buy-slot" ? "Add another website" : "Plan"
         }
         title={planChangePrompt?.title || ""}
         description={planChangePrompt?.description || ""}

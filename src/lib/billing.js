@@ -19,6 +19,9 @@ export const TRIAL_DAYS = 14;
 export const BILLING_PERIOD_DAYS = 30;
 export const BILLING_CURRENCY = "usd";
 
+/** Maximum total websites per account (1 first + up to 9 additional by default). */
+export const MAX_WEBSITE_SLOTS = Number(process.env.MAX_WEBSITE_SLOTS) || 10;
+
 /** Allowed profile sections to return to after Stripe Checkout. */
 export function normalizeBillingReturnTo(value, fallback = "plan") {
   const raw = String(value || "")
@@ -62,8 +65,8 @@ export const FREE_TEMPLATE_IDS = new Set([
  * Free is the default plan — 1 website, all templates, switch anytime.
  * Extra website: one-time +1 slot after successful payment (max 2 sites).
  */
-/** 1 included + 1 extra after a paid add-on. */
-export const MAX_SITE_SLOTS = 2;
+/** @deprecated Use MAX_WEBSITE_SLOTS instead */
+export const MAX_SITE_SLOTS = MAX_WEBSITE_SLOTS;
 
 export const PLANS = {
   free: {
@@ -482,6 +485,41 @@ export function planFeatures(user) {
   };
 }
 
+/** Get plan features for a specific site (per-site capabilities). */
+export function sitePlanFeatures(site, user) {
+  if (!site) return planFeatures(user);
+  
+  // If site has no plan or is free, use account-level features as fallback
+  const sitePlanId = site.planId || "free";
+  if (sitePlanId === "free") return planFeatures(user);
+  
+  // Check if user's subscription is active
+  if (!isSubscriptionActive(user)) {
+    return {
+      live: false,
+      hosting: false,
+      domain: false,
+      pwa: false,
+      technonaireAddress: null,
+      premiumTemplates: true,
+      templateSwitch: true,
+    };
+  }
+  
+  // Return features for the site's specific plan
+  const plan = getPlan(sitePlanId);
+  return {
+    live: false,
+    hosting: false,
+    domain: false,
+    pwa: false,
+    technonaireAddress: null,
+    premiumTemplates: true,
+    templateSwitch: true,
+    ...(plan?.features || {}),
+  };
+}
+
 /** Free and paid: all templates allowed. Site count is limited by site_slots. */
 export function canUseTemplate(user, templateId) {
   if (user?.role === "admin") return true;
@@ -509,7 +547,7 @@ export function billingPublicFields(user, { sitesUsed, liveSites, purchasedAddon
   const plan = resolveActivePlan(user);
   const stripe = isStripeConfigured();
   const features = planFeatures(user);
-  const siteSlots = Math.min(MAX_SITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
+  const siteSlots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
   const used = Number.isFinite(sitesUsed) ? Number(sitesUsed) : null;
   const live =
     Number.isFinite(liveSites) ? Math.max(0, Number(liveSites) || 0) : null;
@@ -552,8 +590,9 @@ export function billingPublicFields(user, { sitesUsed, liveSites, purchasedAddon
     liveUnitPriceCents: unitCents,
     estimatedMonthlyCents,
     canCreateSite: used == null ? null : used < siteSlots,
-    canBuyAddon: siteSlots < MAX_SITE_SLOTS,
-    maxSiteSlots: MAX_SITE_SLOTS,
+    canBuyAddon: siteSlots < MAX_WEBSITE_SLOTS,
+    maxWebsiteSlots: MAX_WEBSITE_SLOTS,
+    maxSiteSlots: MAX_WEBSITE_SLOTS,
     canGoLive: Boolean(features.live) && (user.role === "owner" || user.role === "admin"),
     canStartTrial: false,
     canSubscribe: user.role === "owner",
@@ -661,18 +700,18 @@ export async function setOwnerSiteLive(userId, siteId, live) {
   let site = await getSiteById(siteId);
   if (!site || !ownerOwnsSite(user, site)) throw new Error("Site not found");
 
-  const features = planFeatures(user);
+  const features = sitePlanFeatures(site, user);
   if (live) {
     if (!features.live) {
       throw new Error(
         "Subscribe to Starter, Custom, Domain, or Pro to make a website live.",
       );
     }
-    const slots = Math.min(MAX_SITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
+    const slots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
     const currentlyLive = await countLiveSitesByOwner(userId);
     if (!isSiteLive(site) && currentlyLive >= slots) {
       throw new Error(
-        `You can only have ${slots} live website${slots === 1 ? "" : "s"} with your current slots. Buy more website slots in Profile.`,
+        `You can only have ${slots} live website${slots === 1 ? "" : "s"}. Add another website in Profile to increase your limit.`,
       );
     }
 
@@ -838,7 +877,7 @@ export async function incrementSiteSlots(userId, slots) {
   await query(
     `UPDATE users SET site_slots = LEAST($3, GREATEST(1, COALESCE(site_slots, 1) + $2)), payment_updated_at = now()
      WHERE id = $1`,
-    [Number(userId), add, MAX_SITE_SLOTS],
+    [Number(userId), add, MAX_WEBSITE_SLOTS],
   );
   return publicUser(await getUserById(userId));
 }
@@ -1415,9 +1454,11 @@ export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo } = {}) {
     throw new Error("The selected plan does not have a valid additional site price.");
   }
 
-  const currentSlots = Math.min(MAX_SITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
-  if (currentSlots >= MAX_SITE_SLOTS) {
-    throw new Error("You already have the maximum number of website slots.");
+  const currentSlots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
+  if (currentSlots >= MAX_WEBSITE_SLOTS) {
+    throw new Error(
+      `You've reached the account limit of ${MAX_WEBSITE_SLOTS} websites. Contact us if you need more.`
+    );
   }
 
   const stripe = getStripe();

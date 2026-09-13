@@ -135,6 +135,8 @@ ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_hostname_status TEXT NULL;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_ssl_status TEXT NULL;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_validation_records JSONB NULL;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS cf_metadata JSONB NULL;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'free';
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS stripe_subscription_item_id TEXT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_custom_domain_unique
   ON sites (lower(custom_domain))

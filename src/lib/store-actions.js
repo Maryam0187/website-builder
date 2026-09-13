@@ -116,6 +116,8 @@ function mapSite(row) {
     conversationId: row.conversation_id == null ? null : Number(row.conversation_id),
     ownerId: row.owner_id == null ? null : Number(row.owner_id),
     status: row.status,
+    planId: row.plan_id || "free",
+    stripeSubscriptionItemId: row.stripe_subscription_item_id || null,
     content: normalizeSiteContent(content),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1153,7 +1155,7 @@ export async function setActiveSiteForOwner(ownerId, siteId) {
  * Create an additional website for an existing owner (uses site_slots).
  * Sets the new site as the active editor site.
  */
-export async function createOwnerSite(ownerId, { brandName, template } = {}) {
+export async function createOwnerSite(ownerId, { brandName, template, planId = "free" } = {}) {
   const oid = toInt(ownerId);
   if (oid == null) throw new Error("Owner not found");
 
@@ -1161,16 +1163,18 @@ export async function createOwnerSite(ownerId, { brandName, template } = {}) {
   const owner = userRes.rows[0];
   if (!owner) throw new Error("Owner not found");
 
-  const slots = Math.min(2, Math.max(1, Number(owner.site_slots) || 1));
+  // Import MAX_WEBSITE_SLOTS from billing
+  const { MAX_WEBSITE_SLOTS } = await import("./billing");
+  const slots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(owner.site_slots) || 1));
   const used = await countSitesByOwner(oid);
   if (slots <= 1) {
     throw new Error(
-      "Pay for +1 Website in Profile first. After payment succeeds you can create one extra site.",
+      "Add another website in Profile first. After payment you can create your additional site.",
     );
   }
   if (used >= slots) {
     throw new Error(
-      `Website slot limit reached (${used}/${slots}). You can add one extra site after a successful payment.`,
+      `Website limit reached (${used}/${slots}). Add another website in Profile to increase your limit.`,
     );
   }
 
@@ -1187,6 +1191,7 @@ export async function createOwnerSite(ownerId, { brandName, template } = {}) {
   }
 
   const resolvedTemplate = resolveTemplateId(template || "other");
+  const resolvedPlanId = String(planId || "free").toLowerCase().trim();
   const content = normalizeSiteContent(
     createDefaultSiteContent({
       brandName: name,
@@ -1199,10 +1204,10 @@ export async function createOwnerSite(ownerId, { brandName, template } = {}) {
 
   return withTransaction(async (client) => {
     const siteRes = await client.query(
-      `INSERT INTO sites (slug, conversation_id, owner_id, status, content)
-       VALUES ($1, NULL, $2, 'draft', $3::jsonb)
+      `INSERT INTO sites (slug, conversation_id, owner_id, status, content, plan_id)
+       VALUES ($1, NULL, $2, 'draft', $3::jsonb, $4)
        RETURNING *`,
-      [slug, oid, JSON.stringify(content)],
+      [slug, oid, JSON.stringify(content), resolvedPlanId],
     );
     const site = withNormalizedContent(mapSite(siteRes.rows[0]));
 
