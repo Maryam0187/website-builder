@@ -1500,7 +1500,7 @@ export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo } = {}) {
               : `${plan.name} — additional website`,
             description: isFreePlan
               ? "Second website slot on the Free plan. $5/month."
-              : `Second website slot on your ${plan.name} plan. ${plan.additionalPriceLabel} per month.`,
+              : `Additional website on your ${plan.name} plan. ${plan.additionalPriceLabel} per month.`,
             tax_code: "txcd_10103001",
           },
         },
@@ -1510,6 +1510,7 @@ export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo } = {}) {
       userId: String(user.id),
       addonId: "site_plus_1",
       planId: plan.id,
+      slotPlanId: plan.id,
       kind: "addon",
       note: slotLabel,
       returnTo: urls.returnTo,
@@ -1624,6 +1625,7 @@ export async function syncCheckoutSession(sessionId) {
     invoiceUrl: invoice?.id ? `/invoice/${invoice.id}` : null,
     kind: session.metadata?.kind || session.mode,
     addonId: session.metadata?.addonId || null,
+    slotPlanId: session.metadata?.slotPlanId || null,
     returnTo: normalizeBillingReturnTo(session.metadata?.returnTo, "plan"),
   };
 }

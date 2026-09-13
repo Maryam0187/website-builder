@@ -99,6 +99,7 @@ export async function POST(request) {
         const site = await createOwnerSite(user.id, {
           brandName: body.brandName,
           template: body.template,
+          planId: body.planId || "free",
         });
         const fresh = publicUser(await getUserById(user.id));
         const sites = await listSitesByOwner(user.id);

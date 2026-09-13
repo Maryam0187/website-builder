@@ -59,6 +59,7 @@ export default function ProfilePage() {
   const [billingMsg, setBillingMsg] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(null);
+  const [newSitePlanId, setNewSitePlanId] = useState(null);
   const [activeHash, setActiveHash] = useState("#account");
   const [siteNames, setSiteNames] = useState({});
   const [siteNameBusy, setSiteNameBusy] = useState({});
@@ -147,6 +148,7 @@ export default function ProfilePage() {
             if (syncData.user) setUser(syncData.user);
             if (syncData.billing) setBilling(syncData.billing);
             if (syncData.invoices) setInvoices(syncData.invoices);
+            if (syncData.slotPlanId) setNewSitePlanId(syncData.slotPlanId);
             const msg = syncData.message || "Payment confirmed — package activated.";
             setBillingMsg(msg);
             if (syncData.promptCreateSite) {
@@ -578,12 +580,14 @@ export default function ProfilePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "create-site",
-            brandName: extra.brandName || "My second website",
+            brandName: extra.brandName || "My additional website",
+            planId: newSitePlanId || extra.planId || "free",
           }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not create website");
         setCreateSitePrompt(false);
+        setNewSitePlanId(null);
         if (data.user) setUser(data.user);
         if (Array.isArray(data.sites)) {
           applySitesFromResponse(data, data.site?.id);

@@ -170,11 +170,12 @@ export async function POST(request) {
         invoice: result.invoice || null,
         invoiceUrl: result.invoiceUrl || null,
         addonId: result.addonId || null,
+        slotPlanId: result.slotPlanId || null,
         kind: result.kind || null,
         returnTo: result.returnTo || null,
         promptCreateSite: Boolean(isSiteSlot && billing?.canCreateSite),
         message: isSiteSlot
-          ? "Payment confirmed — name your second website to finish setup."
+          ? "Payment confirmed — name your new website to get started."
           : result.kind === "addon" || result.kind === "payment"
             ? "Payment confirmed — website slots added."
             : "Payment confirmed — package activated.",

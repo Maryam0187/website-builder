@@ -213,7 +213,7 @@ export default function PackageFlow({
                 Everyone starts on Free. Subscribe to Starter ($9), Custom ($19), Domain ($29), or
                 Pro + PWA ($39) to publish and host. Already subscribed? Upgrade charges only the
                 difference on your saved card. Downgrade switches plans with no charge now — the
-                lower price starts next month. Additional websites available at discounted monthly prices.
+                lower price starts next month. Add another website available at discounted monthly prices.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -320,9 +320,9 @@ export default function PackageFlow({
 
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-semibold text-white">Additional websites</h3>
+              <h3 className="text-lg font-semibold text-white">Add another website</h3>
               <p className="mt-1 text-sm text-blue-100">
-                Each plan includes 1 website. You can add a second website on any plan.
+                Each plan includes 1 website. You can add more websites — each gets its own plan and price.
               </p>
             </div>
 
@@ -334,9 +334,9 @@ export default function PackageFlow({
                 onClick={() => onCreateSiteRequest?.()}
                 className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
               >
-                Create your extra website
+                Create your additional website
               </button>
-            ) : sitesUsed != null && sitesUsed >= siteSlots && siteSlots >= 2 ? (
+            ) : sitesUsed != null && sitesUsed >= siteSlots && siteSlots >= (billing?.maxWebsiteSlots || 10) ? (
               <p className="text-sm text-emerald-200">
                 Extra website already created ({sitesUsed} of {siteSlots}).
               </p>
@@ -350,14 +350,14 @@ export default function PackageFlow({
                     onClick={() => setShowSlotPicker(true)}
                     className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-5 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/25 disabled:opacity-60"
                   >
-                    + Add second website
+                    + Add another website
                   </button>
                 ) : (
                   /* Step 2 — inline plan picker */
                   <div className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-semibold text-white">Choose a plan for your second website</p>
+                        <p className="font-semibold text-white">Step 1: Choose a plan for your new website</p>
                         <p className="mt-0.5 text-xs text-blue-200/70">
                           Each site can have its own plan. You&apos;ll be charged via Stripe.
                         </p>
@@ -372,11 +372,11 @@ export default function PackageFlow({
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {[
-                        { id: "free",    name: "Free",      price: "$5/mo",  hint: "Draft only · no hosting" },
+                        { id: "free",    name: "Free",      price: "$5/mo",  hint: "Draft only · no live hosting" },
                         { id: "starter", name: "Starter",   price: "$7/mo",  hint: "Live · auto Technonaire address" },
                         { id: "custom",  name: "Custom",    price: "$15/mo", hint: "Live · chosen Technonaire address" },
-                        { id: "domain",  name: "Domain",    price: "$24/mo", hint: "Live · your own domain" },
-                        { id: "pro",     name: "Pro + PWA", price: "$34/mo", hint: "Live · domain + installable PWA" },
+                        { id: "domain",  name: "Domain",    price: "$24/mo", hint: "Live · use your own domain" },
+                        { id: "pro",     name: "Pro + PWA", price: "$34/mo", hint: "Live · domain + installable app" },
                       ].map((slot) => {
                         const isCurrent = currentPlanId === slot.id;
                         return (
@@ -389,9 +389,9 @@ export default function PackageFlow({
                               setPlanChangePrompt({
                                 mode: "buy-slot",
                                 slotPlanId: slot.id,
-                                title: `Add a second website on ${slot.name}?`,
+                                title: `Add website on ${slot.name}?`,
                                 description: `You’ll pay ${slot.price} via Stripe for one extra website slot (${slot.hint}). After payment you can name and create the new site.`,
-                                confirmLabel: `Continue to pay · ${slot.price}`,
+                                confirmLabel: `Continue to payment · ${slot.price}`,
                               });
                             }}
                             className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition disabled:opacity-60 ${
@@ -405,7 +405,7 @@ export default function PackageFlow({
                                 {slot.name}
                                 {isCurrent ? (
                                   <span className="ml-1.5 text-[10px] font-bold text-cyan-300 uppercase">
-                                    your plan
+                                    your current plan
                                   </span>
                                 ) : null}
                               </span>
