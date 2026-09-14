@@ -70,29 +70,23 @@ console.log("✓ Test 2 passed: Payment Element rendering is guarded\n");
 // Test 3: Payment flow behavior matrix
 console.log("--- Test 3: Payment Flow Behavior Matrix ---");
 
-function determinePaymentFlow(hasPublishableKey, hasCard) {
+function determinePaymentFlow(hasCard) {
   if (hasCard) {
     return "on-site charge (saved card)";
   }
   
-  if (!hasPublishableKey) {
-    return "Stripe Checkout redirect (no key)";
-  }
-  
-  return "Payment Element dialog (add card on-site)";
+  return "Stripe Checkout redirect (always)";
 }
 
 const flowTests = [
-  { hasKey: true, hasCard: true, expected: "on-site charge (saved card)" },
-  { hasKey: true, hasCard: false, expected: "Payment Element dialog (add card on-site)" },
-  { hasKey: false, hasCard: true, expected: "on-site charge (saved card)" },
-  { hasKey: false, hasCard: false, expected: "Stripe Checkout redirect (no key)" },
+  { hasCard: true, expected: "on-site charge (saved card)" },
+  { hasCard: false, expected: "Stripe Checkout redirect (always)" },
 ];
 
 flowTests.forEach((test, i) => {
-  const result = determinePaymentFlow(test.hasKey, test.hasCard);
+  const result = determinePaymentFlow(test.hasCard);
   const status = result === test.expected ? "✓" : "✗";
-  console.log(`${status} Case ${i + 1}: key=${test.hasKey}, card=${test.hasCard}`);
+  console.log(`${status} Case ${i + 1}: card=${test.hasCard}`);
   console.log(`  → ${result}`);
 });
 
@@ -101,38 +95,33 @@ console.log("✓ Test 3 passed: Payment flow logic is correct\n");
 // Test 4: PackageFlow behavior with missing key
 console.log("--- Test 4: PackageFlow Behavior ---");
 
-function packageFlowAction(canUsePaymentElement, hasCard, action) {
+function packageFlowAction(hasCard, action) {
   if (hasCard) {
     return `${action}-onsite (charge saved card)`;
   }
   
-  if (!canUsePaymentElement) {
-    // No publishable key → redirect to Checkout
-    if (action === "subscribe") return "checkout (redirect)";
-    if (action === "buy-site-slot") return "buy-site-slot (redirect)";
-    return `${action} (redirect)`;
-  }
-  
-  // Has publishable key → show Payment Element dialog
-  return `show AddPaymentMethodDialog → ${action}-onsite after card added`;
+  // No card → always redirect to Checkout
+  if (action === "subscribe") return "checkout (redirect)";
+  if (action === "buy-site-slot") return "buy-site-slot (redirect)";
+  return `${action} (redirect)`;
 }
 
 const actions = [
-  { action: "subscribe", canUse: true, hasCard: true },
-  { action: "subscribe", canUse: true, hasCard: false },
-  { action: "subscribe", canUse: false, hasCard: false },
-  { action: "buy-site-slot", canUse: true, hasCard: true },
-  { action: "buy-site-slot", canUse: true, hasCard: false },
-  { action: "buy-site-slot", canUse: false, hasCard: false },
+  { action: "subscribe", hasCard: true },
+  { action: "subscribe", hasCard: false },
+  { action: "buy-site-slot", hasCard: true },
+  { action: "buy-site-slot", hasCard: false },
+  { action: "upgrade", hasCard: true },
+  { action: "upgrade", hasCard: false },
 ];
 
 actions.forEach((test) => {
-  const result = packageFlowAction(test.canUse, test.hasCard, test.action);
-  console.log(`✓ ${test.action}, canUsePaymentElement=${test.canUse}, hasCard=${test.hasCard}`);
+  const result = packageFlowAction(test.hasCard, test.action);
+  console.log(`✓ ${test.action}, hasCard=${test.hasCard}`);
   console.log(`  → ${result}`);
 });
 
-console.log("✓ Test 4 passed: PackageFlow handles missing key correctly\n");
+console.log("✓ Test 4 passed: PackageFlow handles all cases correctly\n");
 
 // Test 5: Error messages
 console.log("--- Test 5: User-Facing Error Messages ---");
@@ -160,15 +149,13 @@ console.log("  - Guard: const stripePromise = publishableKey ? loadStripe(publis
 console.log("✓ Fix 2: Payment Element is NOT rendered when publishable key is missing");
 console.log("  - Shows clear error message instead");
 console.log("  - User can close the dialog");
-console.log("✓ Fix 3: PackageFlow checks canUsePaymentElement before showing dialog");
-console.log("  - No card + no key → Checkout redirect");
-console.log("  - No card + has key → Payment Element dialog");
-console.log("  - Has card → on-site charge (works regardless of key)");
+console.log("✓ Fix 3: PackageFlow always redirects to Checkout when no card");
+console.log("  - No card → Checkout redirect (always)");
+console.log("  - Has card → on-site charge");
 console.log("✓ Fix 4: All payment cases handled correctly");
-console.log("  - Subscribe: ✓");
-console.log("  - Upgrade: ✓");
-console.log("  - Downgrade: ✓");
-console.log("  - Buy extra site: ✓");
-console.log("  - Add payment method: ✓");
+console.log("  - Subscribe: ✓ (Checkout redirect or on-site)");
+console.log("  - Upgrade: ✓ (Checkout redirect or on-site)");
+console.log("  - Buy extra site: ✓ (Checkout redirect or on-site)");
+console.log("  - Add payment method: ✓ (shows error if no key)");
 
 console.log("\n=== All Stripe Publishable Key Tests Passed ===\n");

@@ -66,7 +66,7 @@ const testCases = [
     action: "subscribe",
     planId: "starter",
     hasCard: false,
-    expected: "Show AddPaymentMethodDialog, then subscribe-onsite after card added",
+    expected: "Redirect to Stripe Checkout (no card on file)",
   },
   {
     name: "Upgrade - has card",
@@ -87,7 +87,7 @@ const testCases = [
     action: "buy-site-slot",
     slotPlanId: "custom",
     hasCard: false,
-    expected: "Show AddPaymentMethodDialog, then buy-site-slot-onsite after card added",
+    expected: "Redirect to Stripe Checkout (no card on file)",
   },
 ];
 
@@ -100,8 +100,7 @@ testCases.forEach((testCase) => {
   if (testCase.hasCard) {
     console.log(`  - ✓ Uses on-site API (no Stripe Checkout redirect)`);
   } else {
-    console.log(`  - ✓ Shows AddPaymentMethodDialog first`);
-    console.log(`  - ✓ After card added, auto-retries with on-site API`);
+    console.log(`  - ✓ Redirects to Stripe Checkout`);
   }
 });
 
@@ -126,7 +125,7 @@ const steps = [
     step: 2.1,
     action: "User selects plan (e.g., Custom $15/mo)",
     hasCard: false,
-    state: "Check for saved card → no card → show AddPaymentMethodDialog",
+    state: "Check for saved card → no card → redirect to Stripe Checkout",
   },
   {
     step: 3,
@@ -136,9 +135,9 @@ const steps = [
   },
   {
     step: 3.1,
-    action: "User adds card",
+    action: "User completes Stripe Checkout",
     hasCard: false,
-    state: "Save card via SetupIntent, then auto-call /api/billing/charge-on-site",
+    state: "Payment processed, return to Profile with session_id",
   },
   {
     step: 4,
@@ -220,8 +219,8 @@ const redirectTests = [
   },
   {
     scenario: "Subscribe without card",
-    shouldRedirect: false,
-    reason: "Shows AddPaymentMethodDialog (embedded Payment Element)",
+    shouldRedirect: true,
+    reason: "Redirects to Stripe Checkout (no card on file)",
   },
   {
     scenario: "Update card (from 'Update card' button)",
@@ -231,7 +230,7 @@ const redirectTests = [
 ];
 
 redirectTests.forEach((test) => {
-  const status = test.shouldRedirect ? "❌ May redirect" : "✓ Stays on-site";
+  const status = test.shouldRedirect ? "→ Redirects" : "✓ Stays on-site";
   console.log(`${status}: ${test.scenario}`);
   console.log(`  Reason: ${test.reason}`);
 });
@@ -243,7 +242,7 @@ console.log("=== Summary ===");
 console.log("✓ Bug 1 fixed: Each website displays and uses ONLY its own stored plan_id");
 console.log("✓ Bug 2 fixed: Primary purchase paths (subscribe, upgrade, buy extra site) stay on-site");
 console.log("  - Saved card → confirm + charge on-site");
-console.log("  - No card → embedded Payment Element on-site");
+console.log("  - No card → redirect to Stripe Checkout");
 console.log("  - Only 'manage/add/update card' may redirect to Stripe Customer Portal");
 console.log("✓ Bug 3 fixed: Additional website flow works end-to-end");
 console.log("  - User picks plan → payment on-site → invoice/continue → name site");

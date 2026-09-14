@@ -131,10 +131,6 @@ export default function PackageFlow({
   const canceling = subStatus === "canceled" && paidActive;
   const showPlan = view === "all" || view === "plan";
   const showBilling = view === "all" || view === "billing";
-  
-  // Check if Stripe.js can be initialized (publishable key is set)
-  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
-  const canUsePaymentElement = Boolean(publishableKey);
 
   const currentPlanId = paidActive
     ? normalizeCurrentPlanId(billing?.planId)
@@ -282,21 +278,8 @@ export default function PackageFlow({
                         const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                         if (!hasCard) {
                           // MARKER_UPGRADE_NO_CARD
-                          // If no publishable key, redirect to Checkout instead of Payment Element
-                          if (!canUsePaymentElement) {
-                            onAction("checkout", item.id);
-                            return;
-                          }
-                          setPlanChangePrompt({
-                            planId: item.id,
-                            mode: "upgrade-need-card",
-                            title: `Upgrade to ${item.name}?`,
-                            description: `To charge the ${formatMoney(differenceCents)} difference without Checkout, add a card first. You can update your payment method in Stripe, then come back and upgrade.`,
-                            confirmLabel: "Add or change card",
-                            requireChargeConfirm: false,
-                            cardLabel: null,
-                            changeCardOnly: true,
-                          });
+                          // No card → always redirect to Stripe Checkout
+                          onAction("checkout", item.id);
                           return;
                         }
                         setPlanChangePrompt({
@@ -327,13 +310,8 @@ export default function PackageFlow({
                       const card = billing?.cardOnFile;
                       const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                       if (!hasCard) {
-                        // If no publishable key, redirect to Checkout instead of Payment Element
-                        if (!canUsePaymentElement) {
-                          onAction("checkout", item.id);
-                          return;
-                        }
-                        setPendingPurchase({ action: "subscribe", planId: item.id, planName: item.name });
-                        setShowAddPaymentDialog(true);
+                        // No card → always redirect to Stripe Checkout
+                        onAction("checkout", item.id);
                         return;
                       }
                       // Has card, show confirmation
@@ -427,18 +405,8 @@ export default function PackageFlow({
                               const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                               
                               if (!hasCard) {
-                                // If no publishable key, redirect to Checkout instead of Payment Element
-                                if (!canUsePaymentElement) {
-                                  onAction("buy-site-slot", slot.id);
-                                  return;
-                                }
-                                setPendingPurchase({ 
-                                  action: "buy-site-slot", 
-                                  slotPlanId: slot.id, 
-                                  slotName: slot.name,
-                                  slotPrice: slot.price
-                                });
-                                setShowAddPaymentDialog(true);
+                                // No card → always redirect to Stripe Checkout
+                                onAction("buy-site-slot", slot.id);
                                 return;
                               }
                               
