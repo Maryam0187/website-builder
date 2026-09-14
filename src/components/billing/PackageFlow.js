@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import PlanChangeDialog from "@/components/billing/PlanChangeDialog";
+import AddPaymentMethodDialog from "@/components/billing/AddPaymentMethodDialog";
 
 function formatMoney(cents) {
   return `$${((Number(cents) || 0) / 100).toFixed(0)}`;
@@ -116,6 +117,8 @@ export default function PackageFlow({
 }) {
   const [showSlotPicker, setShowSlotPicker] = useState(false);
   const [planChangePrompt, setPlanChangePrompt] = useState(null);
+  const [showAddPaymentDialog, setShowAddPaymentDialog] = useState(false);
+  const [pendingPurchase, setPendingPurchase] = useState(null);
   const subStatus = billing?.subscriptionStatus || "none";
   const paidActive = Boolean(billing?.subscriptionActive);
   const allPlans = billing?.plans || [];
@@ -274,6 +277,7 @@ export default function PackageFlow({
                         const card = billing?.cardOnFile;
                         const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                         if (!hasCard) {
+                          // MARKER_UPGRADE_NO_CARD
                           setPlanChangePrompt({
                             planId: item.id,
                             mode: "upgrade-need-card",
@@ -310,7 +314,26 @@ export default function PackageFlow({
                         });
                         return;
                       }
-                      onAction("subscribe", item.id);
+                      // For initial subscribe, check if user has card
+                      const card = billing?.cardOnFile;
+                      const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
+                      if (!hasCard) {
+                        setPendingPurchase({ action: "subscribe", planId: item.id, planName: item.name });
+                        setShowAddPaymentDialog(true);
+                        return;
+                      }
+                      // Has card, show confirmation
+                      setPlanChangePrompt({
+                        planId: item.id,
+                        mode: "subscribe",
+                        title: `Subscribe to ${item.name}?`,
+                        description: `Confirm to charge ${item.priceLabel} now on your saved card. You'll be billed monthly.`,
+                        confirmLabel: `Subscribe · ${item.priceLabel}`,
+                        requireChargeConfirm: true,
+                        chargeConfirmLabel: `I confirm charging ${item.priceLabel} to ${card.label}`,
+                        cardLabel: card.label,
+                        changeCardOnly: false,
+                      });
                     }}
                   />
                 );
@@ -588,6 +611,38 @@ export default function PackageFlow({
           const planId = planChangePrompt?.planId;
           setPlanChangePrompt(null);
           if (planId) onAction("subscribe", planId);
+        }}
+      />
+
+      <AddPaymentMethodDialog
+        open={showAddPaymentDialog}
+        title="Add payment method"
+        description={
+          pendingPurchase?.planName
+            ? `Add a card to subscribe to ${pendingPurchase.planName} on-site.`
+            : pendingPurchase?.slotName
+              ? `Add a card to purchase an additional website slot for ${pendingPurchase.slotPrice}.`
+              : "Add a card to complete your purchase on-site without redirecting to Stripe Checkout."
+        }
+        busy={busy}
+        onSuccess={() => {
+          setShowAddPaymentDialog(false);
+          // After card is added, automatically retry the purchase
+          if (pendingPurchase?.action === "subscribe") {
+            onAction("subscribe-onsite", pendingPurchase.planId);
+          } else if (pendingPurchase?.action === "buy-site-slot") {
+            onAction("buy-site-slot-onsite", pendingPurchase.slotPlanId);
+          }
+          setPendingPurchase(null);
+        }}
+        onCancel={() => {
+          if (!busy) {
+            setShowAddPaymentDialog(false);
+            setPendingPurchase(null);
+          }
+        }}
+        onError={(err) => {
+          console.error("Payment method error:", err);
         }}
       />
     </div>

@@ -19,6 +19,8 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^6.10.0",
+    "@stripe/stripe-js": "^9.16.0",
     "bcryptjs": "^3.0.3",
     "nanoid": "^6.0.0",
     "next": "16.2.12",

@@ -1856,6 +1856,235 @@ export async function cancelSubscription(userId) {
   });
 }
 
+/** Create a SetupIntent to collect payment method without charging (for on-site flow). */
+export async function createSetupIntent(userId) {
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "owner") throw new Error("Only owners can add payment methods");
+
+  const stripe = getStripe();
+  let customerId = user.stripeCustomerId;
+
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: user.email,
+      name: user.name || undefined,
+      metadata: { userId: String(user.id) },
+    });
+    customerId = customer.id;
+    await updateUserBilling(user.id, { stripeCustomerId: customerId });
+  }
+
+  const setupIntent = await stripe.setupIntents.create({
+    customer: customerId,
+    payment_method_types: ["card"],
+    usage: "off_session",
+    metadata: {
+      userId: String(user.id),
+    },
+  });
+
+  return {
+    clientSecret: setupIntent.client_secret,
+    customerId,
+  };
+}
+
+/** Subscribe to a plan on-site using the customer's saved payment method. */
+export async function subscribeWithSavedCard(userId, planId = "starter") {
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "owner") throw new Error("Only owners can subscribe");
+
+  const plan = getPlan(planId);
+  if (plan.id === "free" || plan.priceCents <= 0) {
+    throw new Error("Choose a paid package to subscribe");
+  }
+
+  const existingSub = await getUsableStripeSubscription(user);
+  if (existingSub && isSubscriptionActive(user)) {
+    const currentRank = planRank(user.planId || "free");
+    const nextRank = planRank(plan.id);
+    if (nextRank > currentRank) {
+      return upgradeStripeSubscription(userId, plan.id);
+    }
+    if (nextRank < currentRank) {
+      return downgradeStripeSubscription(userId, plan.id);
+    }
+    if (plan.id === normalizePlanId(user.planId)) {
+      return resumeStripeSubscription(userId);
+    }
+  }
+
+  const stripe = getStripe();
+  const customerId = user.stripeCustomerId;
+  if (!customerId) throw new Error("No Stripe customer on this account");
+
+  const customer = await stripe.customers.retrieve(customerId);
+  if (!customer || customer.deleted) throw new Error("Stripe customer not found");
+
+  let pmId = customer.invoice_settings?.default_payment_method;
+  pmId = typeof pmId === "string" ? pmId : pmId?.id || null;
+
+  if (!pmId) {
+    const cards = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: "card",
+      limit: 1,
+    });
+    pmId = cards.data[0]?.id || null;
+  }
+
+  if (!pmId) {
+    throw new Error("No payment method on file. Add a card first.");
+  }
+
+  await voidOpenCheckoutInvoices(userId);
+
+  const liveCount = await countLiveSitesByOwner(userId);
+  const quantity = Math.max(1, liveCount);
+
+  const price = await stripe.prices.create({
+    currency: BILLING_CURRENCY,
+    unit_amount: plan.priceCents,
+    recurring: { interval: "month" },
+    product_data: {
+      name: `Easy Website — ${plan.name}`,
+      metadata: { planId: plan.id },
+    },
+  });
+
+  const subscription = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [{ price: price.id, quantity }],
+    default_payment_method: pmId,
+    payment_behavior: "default_incomplete",
+    expand: ["latest_invoice.payment_intent"],
+    metadata: {
+      userId: String(user.id),
+      planId: plan.id,
+      liveQuantity: String(quantity),
+    },
+  });
+
+  const periodEndSec = stripeSubscriptionPeriodEndSec(subscription);
+  const periodEnd = new Date(periodEndSec * 1000).toISOString();
+
+  const invoice = await createInvoice(userId, {
+    planId: plan.id,
+    note: `${plan.name} — paid on-site via Stripe`,
+  });
+  await query(
+    `UPDATE invoices SET status = 'paid', paid_at = now(), updated_at = now() WHERE id = $1`,
+    [invoice.id],
+  );
+
+  const updatedUser = await updateUserBilling(userId, {
+    subscriptionStatus: "active",
+    currentPeriodEnd: periodEnd,
+    clearTrialEnds: true,
+    trialUsed: true,
+    planId: plan.id,
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: subscription.id,
+  });
+
+  const sitesUsed = await countSitesByOwner(userId);
+  const liveSites = await countLiveSitesByOwner(userId);
+  return {
+    subscription,
+    user: updatedUser,
+    billing: billingPublicFields(updatedUser, { sitesUsed, liveSites }),
+    invoice: await getInvoiceById(invoice.id),
+    plan: listPlans().find((p) => p.id === plan.id),
+    message: `Subscribed to ${plan.name}. Charged ${plan.priceLabel}.`,
+  };
+}
+
+/** Buy an extra site slot on-site using the customer's saved payment method. */
+export async function buyExtraSiteSlotOnSite(userId, slotPlanId) {
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "owner") throw new Error("Only owners can buy extra slots");
+
+  const plan = slotPlanId ? getPlan(slotPlanId) : resolveActivePlan(user);
+  if (!plan.additionalPriceCents || plan.additionalPriceCents <= 0) {
+    throw new Error("The selected plan does not have a valid additional site price.");
+  }
+
+  const currentSlots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
+  if (currentSlots >= MAX_WEBSITE_SLOTS) {
+    throw new Error(
+      `You've reached the account limit of ${MAX_WEBSITE_SLOTS} websites. Contact us if you need more.`
+    );
+  }
+
+  const stripe = getStripe();
+  const customerId = user.stripeCustomerId;
+  if (!customerId) throw new Error("No Stripe customer on this account");
+
+  const customer = await stripe.customers.retrieve(customerId);
+  if (!customer || customer.deleted) throw new Error("Stripe customer not found");
+
+  let pmId = customer.invoice_settings?.default_payment_method;
+  pmId = typeof pmId === "string" ? pmId : pmId?.id || null;
+
+  if (!pmId) {
+    const cards = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: "card",
+      limit: 1,
+    });
+    pmId = cards.data[0]?.id || null;
+  }
+
+  if (!pmId) {
+    throw new Error("No payment method on file. Add a card first.");
+  }
+
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: plan.additionalPriceCents,
+    currency: BILLING_CURRENCY,
+    customer: customerId,
+    payment_method: pmId,
+    off_session: true,
+    confirm: true,
+    description: `Additional website slot (${plan.name})`,
+    metadata: {
+      userId: String(user.id),
+      addonId: "site_plus_1",
+      slotPlanId: plan.id,
+    },
+  });
+
+  if (paymentIntent.status !== "succeeded") {
+    throw new Error("Payment did not complete. Check your card or try again.");
+  }
+
+  const isFreePlan = plan.id === "free";
+  const slotLabel = isFreePlan
+    ? "Additional website slot (Free plan · $5/month)"
+    : `Additional website slot (${plan.name} · ${plan.additionalPriceLabel})`;
+
+  const invoice = await createInvoice(userId, {
+    addonId: "site_plus_1",
+    note: slotLabel,
+    slotPlanId: plan.id,
+  });
+  const result = await grantAddonPurchase(invoice.id);
+
+  return {
+    paymentIntent,
+    user: result.user,
+    invoice: result.invoice,
+    slotPlanId: plan.id,
+    message: `Added website slot for ${plan.additionalPriceLabel}. Create your new site now.`,
+  };
+}
+
 function mapInvoice(row) {
   if (!row) return null;
   const addon = row.addon_id ? getAddon(row.addon_id) : null;
