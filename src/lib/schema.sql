@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'domain';
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS stripe_session_id TEXT NULL;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS addon_id TEXT NULL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS slot_plan_id TEXT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
 

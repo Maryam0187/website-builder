@@ -15,6 +15,7 @@ import SubdomainPicker from "@/components/site/SubdomainPicker";
 import CustomDomainSetup from "@/components/site/CustomDomainSetup";
 import BillingBusyOverlay from "@/components/billing/BillingBusyOverlay";
 import PaymentSuccessOverlay from "@/components/billing/PaymentSuccessOverlay";
+import SiteSwitcherGuide from "@/components/site/SiteSwitcherGuide";
 
 const MAX_SITE_VERSIONS = 5;
 
@@ -86,6 +87,7 @@ export default function ProfilePage() {
   const [totpBusy, setTotpBusy] = useState(false);
   const [totpAskLife, setTotpAskLife] = useState("every");
   const [showChat, setShowChat] = useState(false);
+  const [showSiteSwitcherGuide, setShowSiteSwitcherGuide] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -121,6 +123,7 @@ export default function ProfilePage() {
         status: item.status,
         template: item.content?.template || "other",
         templateLabel: item.templateLabel || "Other",
+        planId: item.planId || "free",
       }));
       setSites(mappedSites);
       setSiteNames(
@@ -257,6 +260,7 @@ export default function ProfilePage() {
             status: s.status,
             template: s.content?.template || existing?.template || "other",
             templateLabel: existing?.templateLabel || "Other",
+            planId: s.planId || existing?.planId || "free",
           };
         }),
       );
@@ -275,6 +279,7 @@ export default function ProfilePage() {
                 cfSslStatus: data.site.cfSslStatus || item.cfSslStatus || null,
                 liveUrl: data.liveUrl || item.liveUrl || null,
                 name: data.site.content?.brand?.name || item.name,
+                planId: data.site.planId || item.planId || "free",
               }
             : item,
         ),
@@ -292,6 +297,7 @@ export default function ProfilePage() {
               domainStatus: data.site.domainStatus || prev.domainStatus || "none",
               liveUrl: data.liveUrl || prev.liveUrl || null,
               name: data.site.content?.brand?.name || prev.name,
+              planId: data.site.planId || prev.planId || "free",
             }
           : prev,
       );
@@ -591,6 +597,10 @@ export default function ProfilePage() {
         if (data.user) setUser(data.user);
         if (Array.isArray(data.sites)) {
           applySitesFromResponse(data, data.site?.id);
+          // Show the site switcher guide if this is an additional website (not the first one)
+          if (data.sites.length > 1) {
+            setShowSiteSwitcherGuide(true);
+          }
         }
         if (data.site) {
           const nextName = data.site.content?.brand?.name || data.site.slug;
@@ -894,15 +904,23 @@ export default function ProfilePage() {
                             />
                             <p className="mt-1.5 text-xs text-blue-100/70">/{item.slug}</p>
                           </div>
-                          <span
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                              status === "Published"
-                                ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
-                                : "border border-white/10 bg-white/5 text-blue-100"
-                            }`}
-                          >
-                            {status}
-                          </span>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                status === "Published"
+                                  ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+                                  : "border border-white/10 bg-white/5 text-blue-100"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                            <span
+                              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-200 capitalize"
+                              title={`Plan: ${item.planId || "free"}`}
+                            >
+                              {item.planId === "free" ? "Free" : item.planId}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1462,6 +1480,11 @@ export default function ProfilePage() {
           setPaymentSuccess(null);
           setActiveHash(replaceProfileLocation(next));
         }}
+      />
+
+      <SiteSwitcherGuide
+        open={showSiteSwitcherGuide}
+        onClose={() => setShowSiteSwitcherGuide(false)}
       />
     </div>
   );

@@ -837,7 +837,7 @@ export async function startTrial() {
 
 export async function createInvoice(
   userId,
-  { planId = DEFAULT_PLAN_ID, addonId = null, amountCents, note = "", stripeSessionId = null } = {},
+  { planId = DEFAULT_PLAN_ID, addonId = null, amountCents, note = "", stripeSessionId = null, slotPlanId = null } = {},
 ) {
   const id = Number(userId);
   const addon = addonId ? getAddon(addonId) : null;
@@ -850,8 +850,8 @@ export async function createInvoice(
       ? addon.priceCents
       : plan.priceCents;
   const { rows } = await query(
-    `INSERT INTO invoices (user_id, number, amount_cents, currency, status, due_at, note, plan_id, stripe_session_id, addon_id)
-     VALUES ($1, $2, $3, $4, 'open', $5, $6, $7, $8, $9)
+    `INSERT INTO invoices (user_id, number, amount_cents, currency, status, due_at, note, plan_id, stripe_session_id, addon_id, slot_plan_id)
+     VALUES ($1, $2, $3, $4, 'open', $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       id,
@@ -866,6 +866,7 @@ export async function createInvoice(
       addon ? "free" : plan.id,
       stripeSessionId,
       addon?.id || null,
+      slotPlanId || null,
     ],
   );
   return mapInvoice(rows[0]);
@@ -1634,6 +1635,7 @@ export async function applyAddonCheckoutSession(session) {
   const userId = Number(session.metadata?.userId || session.client_reference_id);
   const addonId = session.metadata?.addonId;
   const invoiceId = session.metadata?.invoiceId;
+  const slotPlanId = session.metadata?.slotPlanId || null;
   if (!Number.isFinite(userId)) throw new Error("Missing user on Stripe session");
 
   const addon = getAddon(addonId);
@@ -1654,6 +1656,7 @@ export async function applyAddonCheckoutSession(session) {
         addonId: addon.id,
         note: session.metadata?.note || `${addon.name} — paid via Stripe`,
         stripeSessionId: session.id,
+        slotPlanId,
       });
       const result = await grantAddonPurchase(created.id);
       paidInvoice = result.invoice;
@@ -1670,6 +1673,7 @@ export async function applyAddonCheckoutSession(session) {
         addonId: addon.id,
         note: session.metadata?.note || `${addon.name} — paid via Stripe`,
         stripeSessionId: session.id,
+        slotPlanId,
       });
       const result = await grantAddonPurchase(created.id);
       paidInvoice = result.invoice;
@@ -1869,6 +1873,7 @@ function mapInvoice(row) {
     planId: plan.id,
     planName: addon ? addon.name : plan.name,
     addonId: addon?.id || null,
+    slotPlanId: row.slot_plan_id || null,
     stripeSessionId: row.stripe_session_id || null,
     createdAt: row.created_at,
   };
