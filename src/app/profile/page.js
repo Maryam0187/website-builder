@@ -94,6 +94,13 @@ export default function ProfilePage() {
     const checkout = params.get("checkout");
     const sessionId = params.get("session_id");
     const fromParam = params.get("from");
+    const urlSlotPlanId = params.get("slotPlanId");
+
+    // Restore slotPlanId from URL parameter if present
+    if (urlSlotPlanId && !newSitePlanId) {
+      setNewSitePlanId(urlSlotPlanId);
+      setCreateSitePrompt(true);
+    }
 
     (async () => {
       const res = await fetch("/api/profile");
@@ -154,20 +161,23 @@ export default function ProfilePage() {
             if (syncData.slotPlanId) setNewSitePlanId(syncData.slotPlanId);
             const msg = syncData.message || "Payment confirmed — package activated.";
             setBillingMsg(msg);
+            const invoiceUrlWithPlan = syncData.slotPlanId && syncData.invoiceUrl
+              ? `${syncData.invoiceUrl}?ref=profile`
+              : syncData.invoiceUrl;
             if (syncData.promptCreateSite) {
               setCreateSitePrompt(true);
               setPaymentSuccess({
                 message: msg,
                 nextHash: "#plan",
                 continueLabel: "Continue",
-                invoiceUrl: syncData.invoiceUrl || null,
+                invoiceUrl: invoiceUrlWithPlan,
               });
             } else {
               setPaymentSuccess({
                 message: msg,
                 nextHash: "#billing",
                 continueLabel: "Continue to Billing",
-                invoiceUrl: syncData.invoiceUrl || null,
+                invoiceUrl: invoiceUrlWithPlan,
               });
             }
             window.history.replaceState(null, "", "/profile");
@@ -659,20 +669,23 @@ export default function ProfilePage() {
         if (data.invoices) setInvoices(data.invoices);
         if (data.slotPlanId) setNewSitePlanId(data.slotPlanId);
         setBillingMsg(data.message || "Website slot added!");
+        const invoiceUrlWithPlan = data.slotPlanId && data.invoiceUrl
+          ? `${data.invoiceUrl}?ref=profile`
+          : data.invoiceUrl;
         if (data.promptCreateSite) {
           setCreateSitePrompt(true);
           setPaymentSuccess({
             message: data.message || "Website slot added! Create your new site now.",
             nextHash: "#plan",
             continueLabel: "Continue",
-            invoiceUrl: data.invoiceUrl || null,
+            invoiceUrl: invoiceUrlWithPlan,
           });
         } else {
           setPaymentSuccess({
             message: data.message || "Website slot added!",
             nextHash: "#billing",
             continueLabel: "Continue to Billing",
-            invoiceUrl: data.invoiceUrl || null,
+            invoiceUrl: invoiceUrlWithPlan,
           });
         }
         setBillingBusy(false);
