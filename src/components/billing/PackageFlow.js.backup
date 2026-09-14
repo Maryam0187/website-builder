@@ -277,7 +277,6 @@ export default function PackageFlow({
                         const card = billing?.cardOnFile;
                         const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                         if (!hasCard) {
-                          // MARKER_UPGRADE_NO_CARD
                           setPlanChangePrompt({
                             planId: item.id,
                             mode: "upgrade-need-card",
@@ -314,26 +313,7 @@ export default function PackageFlow({
                         });
                         return;
                       }
-                      // For initial subscribe, check if user has card
-                      const card = billing?.cardOnFile;
-                      const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
-                      if (!hasCard) {
-                        setPendingPurchase({ action: "subscribe", planId: item.id, planName: item.name });
-                        setShowAddPaymentDialog(true);
-                        return;
-                      }
-                      // Has card, show confirmation
-                      setPlanChangePrompt({
-                        planId: item.id,
-                        mode: "subscribe",
-                        title: `Subscribe to ${item.name}?`,
-                        description: `Confirm to charge ${item.priceLabel} now on your saved card. You'll be billed monthly.`,
-                        confirmLabel: `Subscribe · ${item.priceLabel}`,
-                        requireChargeConfirm: true,
-                        chargeConfirmLabel: `I confirm charging ${item.priceLabel} to ${card.label}`,
-                        cardLabel: card.label,
-                        changeCardOnly: false,
-                      });
+                      onAction("subscribe", item.id);
                     }}
                   />
                 );
@@ -605,12 +585,20 @@ export default function PackageFlow({
           if (planChangePrompt?.mode === "buy-slot") {
             const slotPlanId = planChangePrompt.slotPlanId;
             setPlanChangePrompt(null);
-            if (slotPlanId) onAction("buy-site-slot", slotPlanId);
+            if (slotPlanId) onAction("buy-site-slot-onsite", slotPlanId);
             return;
           }
           const planId = planChangePrompt?.planId;
+          const mode = planChangePrompt?.mode;
           setPlanChangePrompt(null);
-          if (planId) onAction("subscribe", planId);
+          if (planId) {
+            // Use on-site charge if mode is subscribe/upgrade and has card
+            if (mode === "subscribe" || mode === "upgrade") {
+              onAction("subscribe-onsite", planId);
+            } else {
+              onAction("subscribe", planId);
+            }
+          }
         }}
       />
 

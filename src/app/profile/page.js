@@ -623,6 +623,62 @@ export default function ProfilePage() {
         return;
       }
 
+      // Handle on-site payment actions
+      if (action === "subscribe-onsite") {
+        const res = await fetch("/api/billing/charge-on-site", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "subscribe", planId: id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Subscription failed");
+        if (data.user) setUser(data.user);
+        if (data.billing) setBilling(data.billing);
+        if (data.invoices) setInvoices(data.invoices);
+        setBillingMsg(data.message || "Subscribed successfully!");
+        setPaymentSuccess({
+          message: data.message || "Subscribed successfully!",
+          nextHash: "#billing",
+          continueLabel: "Continue to Billing",
+          invoiceUrl: data.invoiceUrl || null,
+        });
+        setBillingBusy(false);
+        return;
+      }
+
+      if (action === "buy-site-slot-onsite") {
+        const res = await fetch("/api/billing/charge-on-site", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "buy-site-slot", slotPlanId: id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to add website slot");
+        if (data.user) setUser(data.user);
+        if (data.billing) setBilling(data.billing);
+        if (data.invoices) setInvoices(data.invoices);
+        if (data.slotPlanId) setNewSitePlanId(data.slotPlanId);
+        setBillingMsg(data.message || "Website slot added!");
+        if (data.promptCreateSite) {
+          setCreateSitePrompt(true);
+          setPaymentSuccess({
+            message: data.message || "Website slot added! Create your new site now.",
+            nextHash: "#plan",
+            continueLabel: "Continue",
+            invoiceUrl: data.invoiceUrl || null,
+          });
+        } else {
+          setPaymentSuccess({
+            message: data.message || "Website slot added!",
+            nextHash: "#billing",
+            continueLabel: "Continue to Billing",
+            invoiceUrl: data.invoiceUrl || null,
+          });
+        }
+        setBillingBusy(false);
+        return;
+      }
+
       const body = { action, ...extra };
       if (action === "subscribe" || action === "checkout") body.planId = id;
       if (action === "buy-addon") body.addonId = id;
