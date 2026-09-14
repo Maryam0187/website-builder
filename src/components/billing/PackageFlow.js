@@ -131,6 +131,10 @@ export default function PackageFlow({
   const canceling = subStatus === "canceled" && paidActive;
   const showPlan = view === "all" || view === "plan";
   const showBilling = view === "all" || view === "billing";
+  
+  // Check if Stripe.js can be initialized (publishable key is set)
+  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
+  const canUsePaymentElement = Boolean(publishableKey);
 
   const currentPlanId = paidActive
     ? normalizeCurrentPlanId(billing?.planId)
@@ -278,6 +282,11 @@ export default function PackageFlow({
                         const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                         if (!hasCard) {
                           // MARKER_UPGRADE_NO_CARD
+                          // If no publishable key, redirect to Checkout instead of Payment Element
+                          if (!canUsePaymentElement) {
+                            onAction("checkout", item.id);
+                            return;
+                          }
                           setPlanChangePrompt({
                             planId: item.id,
                             mode: "upgrade-need-card",
@@ -318,6 +327,11 @@ export default function PackageFlow({
                       const card = billing?.cardOnFile;
                       const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                       if (!hasCard) {
+                        // If no publishable key, redirect to Checkout instead of Payment Element
+                        if (!canUsePaymentElement) {
+                          onAction("checkout", item.id);
+                          return;
+                        }
                         setPendingPurchase({ action: "subscribe", planId: item.id, planName: item.name });
                         setShowAddPaymentDialog(true);
                         return;
@@ -413,6 +427,11 @@ export default function PackageFlow({
                               const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                               
                               if (!hasCard) {
+                                // If no publishable key, redirect to Checkout instead of Payment Element
+                                if (!canUsePaymentElement) {
+                                  onAction("buy-site-slot", slot.id);
+                                  return;
+                                }
                                 setPendingPurchase({ 
                                   action: "buy-site-slot", 
                                   slotPlanId: slot.id, 

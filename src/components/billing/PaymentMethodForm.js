@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "");
+const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
+const stripePromise = publishableKey ? loadStripe(publishableKey) : null;
 
 function PaymentElementForm({ onSuccess, onCancel, onError, busy: externalBusy }) {
   const stripe = useStripe();
@@ -95,6 +96,25 @@ export default function PaymentMethodForm({
   useEffect(() => {
     if (clientSecret) setReady(true);
   }, [clientSecret]);
+
+  // If Stripe.js cannot be loaded (no publishable key), show error
+  if (!stripePromise) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-rose-300">
+          Stripe publishable key is not configured. Payment Element cannot be displayed.
+          Please use Stripe Checkout redirect instead.
+        </p>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-full rounded-full border border-white/20 px-5 py-2.5 text-sm font-medium text-white hover:bg-white/5"
+        >
+          Close
+        </button>
+      </div>
+    );
+  }
 
   if (!clientSecret || !ready) {
     return (
