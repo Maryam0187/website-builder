@@ -37,10 +37,18 @@ Tables are created automatically from `src/lib/schema.sql` on first request.
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### Default admin
+### Reset local DB (admin + one owner only)
 
-- Email: `admin@technonaire.com` (or `ADMIN_EMAIL`)
-- Password: `changeme123` (or `ADMIN_PASSWORD`)
+Wipes all local data, then seeds only admin and one owner:
+
+```bash
+npm run db:reset-local
+```
+
+### Default credentials
+
+- Admin: `admin@technonaire.com` / `changeme123` (or `ADMIN_EMAIL` / `ADMIN_PASSWORD`)
+- Owner: `owner@local.test` / `owner12345` (or `OWNER_EMAIL` / `OWNER_PASSWORD`)
 
 ### Typical flow
 

@@ -9,6 +9,7 @@
     "start:railway": "bash scripts/railway-start.sh",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed-local": "node scripts/seed-local-users.mjs",
+    "db:reset-local": "node scripts/reset-local-db.mjs",
     "lint": "eslint",
     "test": "node --test tests/cloudflare-integration.test.js tests/domain-ux.test.js",
     "test:watch": "node --test --watch tests/cloudflare-integration.test.js tests/domain-ux.test.js",
