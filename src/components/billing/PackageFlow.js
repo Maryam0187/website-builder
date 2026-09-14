@@ -382,7 +382,7 @@ export default function PackageFlow({
                       <div>
                         <p className="font-semibold text-white">Step 1: Choose a plan for your new website</p>
                         <p className="mt-0.5 text-xs text-blue-200/70">
-                          Each site can have its own plan. You&apos;ll be charged via Stripe.
+                          Each site can have its own plan. You&apos;ll be charged on-site.
                         </p>
                       </div>
                       <button
@@ -409,12 +409,31 @@ export default function PackageFlow({
                             disabled={busy}
                             onClick={() => {
                               setShowSlotPicker(false);
+                              const card = billing?.cardOnFile;
+                              const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
+                              
+                              if (!hasCard) {
+                                setPendingPurchase({ 
+                                  action: "buy-site-slot", 
+                                  slotPlanId: slot.id, 
+                                  slotName: slot.name,
+                                  slotPrice: slot.price
+                                });
+                                setShowAddPaymentDialog(true);
+                                return;
+                              }
+                              
                               setPlanChangePrompt({
                                 mode: "buy-slot",
                                 slotPlanId: slot.id,
+                                slotName: slot.name,
                                 title: `Add website on ${slot.name}?`,
-                                description: `You’ll pay ${slot.price} via Stripe for one extra website slot (${slot.hint}). After payment you can name and create the new site.`,
-                                confirmLabel: `Continue to payment · ${slot.price}`,
+                                description: `Confirm to charge ${slot.price} now on your saved card for one extra website slot (${slot.hint}). After payment you can name and create the new site.`,
+                                confirmLabel: `Charge ${slot.price} & add website`,
+                                requireChargeConfirm: true,
+                                chargeConfirmLabel: `I confirm charging ${slot.price} to ${card.label}`,
+                                cardLabel: card.label,
+                                changeCardOnly: false,
                               });
                             }}
                             className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition disabled:opacity-60 ${
@@ -605,7 +624,7 @@ export default function PackageFlow({
           if (planChangePrompt?.mode === "buy-slot") {
             const slotPlanId = planChangePrompt.slotPlanId;
             setPlanChangePrompt(null);
-            if (slotPlanId) onAction("buy-site-slot", slotPlanId);
+            if (slotPlanId) onAction("buy-site-slot-onsite", slotPlanId);
             return;
           }
           const planId = planChangePrompt?.planId;
