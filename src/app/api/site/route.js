@@ -22,7 +22,14 @@ import { setOwnerSiteLive } from "@/lib/billing";
 
 function withLiveUrl(site) {
   if (!site) return site;
-  return { ...site, liveUrl: sitePublicUrl(site) };
+  return { 
+    ...site, 
+    liveUrl: sitePublicUrl(site),
+    // Include domain fields for UI
+    customDomain: site.customDomain || null,
+    domainStatus: site.domainStatus || "none",
+    domainVerifiedAt: site.domainVerifiedAt || null,
+  };
 }
 
 export async function GET(request) {
@@ -92,6 +99,7 @@ export async function POST(request) {
         const site = await createOwnerSite(user.id, {
           brandName: body.brandName,
           template: body.template,
+          planId: body.planId || "free",
         });
         const fresh = publicUser(await getUserById(user.id));
         const sites = await listSitesByOwner(user.id);

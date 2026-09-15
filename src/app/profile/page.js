@@ -11,8 +11,11 @@ import RestoreVersionDialog from "@/components/site/RestoreVersionDialog";
 import VersionNameDialog from "@/components/site/VersionNameDialog";
 import DeleteVersionDialog from "@/components/site/DeleteVersionDialog";
 import SiteNameDialog from "@/components/site/SiteNameDialog";
+import SubdomainPicker from "@/components/site/SubdomainPicker";
+import CustomDomainSetup from "@/components/site/CustomDomainSetup";
 import BillingBusyOverlay from "@/components/billing/BillingBusyOverlay";
 import PaymentSuccessOverlay from "@/components/billing/PaymentSuccessOverlay";
+import SiteSwitcherGuide from "@/components/site/SiteSwitcherGuide";
 
 const MAX_SITE_VERSIONS = 5;
 
@@ -57,6 +60,7 @@ export default function ProfilePage() {
   const [billingMsg, setBillingMsg] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(null);
+  const [newSitePlanId, setNewSitePlanId] = useState(null);
   const [activeHash, setActiveHash] = useState("#account");
   const [siteNames, setSiteNames] = useState({});
   const [siteNameBusy, setSiteNameBusy] = useState({});
@@ -83,12 +87,20 @@ export default function ProfilePage() {
   const [totpBusy, setTotpBusy] = useState(false);
   const [totpAskLife, setTotpAskLife] = useState("every");
   const [showChat, setShowChat] = useState(false);
+  const [showSiteSwitcherGuide, setShowSiteSwitcherGuide] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkout = params.get("checkout");
     const sessionId = params.get("session_id");
     const fromParam = params.get("from");
+    const urlSlotPlanId = params.get("slotPlanId");
+
+    // Restore slotPlanId from URL parameter if present
+    if (urlSlotPlanId && !newSitePlanId) {
+      setNewSitePlanId(urlSlotPlanId);
+      setCreateSitePrompt(true);
+    }
 
     (async () => {
       const res = await fetch("/api/profile");
@@ -104,9 +116,25 @@ export default function ProfilePage() {
       setUser(data.user);
       setTotpAskLife(data.user.totpAskLife || "every");
       setSite(data.site || null);
-      setSites(data.sites || []);
+      const mappedSites = (data.sites || []).map((item) => ({
+        id: item.id,
+        slug: item.slug,
+        subdomain: item.subdomain || null,
+        customDomain: item.customDomain || null,
+        domainStatus: item.domainStatus || "none",
+        domainVerifiedAt: item.domainVerifiedAt || null,
+        cfValidationRecords: item.cfValidationRecords || null,
+        cfSslStatus: item.cfSslStatus || null,
+        liveUrl: item.liveUrl || null,
+        name: item.content?.brand?.name || item.name || item.slug,
+        status: item.status,
+        template: item.content?.template || "other",
+        templateLabel: item.templateLabel || "Other",
+        planId: item.planId || "free",
+      }));
+      setSites(mappedSites);
       setSiteNames(
-        Object.fromEntries((data.sites || []).map((item) => [item.id, item.name || ""])),
+        Object.fromEntries(mappedSites.map((item) => [item.id, item.name || ""])),
       );
       setBilling(data.billing || null);
       setInvoices(data.invoices || []);
@@ -130,22 +158,26 @@ export default function ProfilePage() {
             if (syncData.user) setUser(syncData.user);
             if (syncData.billing) setBilling(syncData.billing);
             if (syncData.invoices) setInvoices(syncData.invoices);
+            if (syncData.slotPlanId) setNewSitePlanId(syncData.slotPlanId);
             const msg = syncData.message || "Payment confirmed — package activated.";
             setBillingMsg(msg);
+            const invoiceUrlWithPlan = syncData.slotPlanId && syncData.invoiceUrl
+              ? `${syncData.invoiceUrl}?ref=profile`
+              : syncData.invoiceUrl;
             if (syncData.promptCreateSite) {
               setCreateSitePrompt(true);
               setPaymentSuccess({
                 message: msg,
                 nextHash: "#plan",
                 continueLabel: "Continue",
-                invoiceUrl: syncData.invoiceUrl || null,
+                invoiceUrl: invoiceUrlWithPlan,
               });
             } else {
               setPaymentSuccess({
                 message: msg,
                 nextHash: "#billing",
                 continueLabel: "Continue to Billing",
-                invoiceUrl: syncData.invoiceUrl || null,
+                invoiceUrl: invoiceUrlWithPlan,
               });
             }
             window.history.replaceState(null, "", "/profile");
@@ -230,11 +262,15 @@ export default function ProfilePage() {
             id: s.id,
             slug: s.slug,
             subdomain: s.subdomain || null,
+            customDomain: s.customDomain || null,
+            domainStatus: s.domainStatus || "none",
+            domainVerifiedAt: s.domainVerifiedAt || null,
             liveUrl: s.liveUrl || null,
             name: s.content?.brand?.name || s.slug,
             status: s.status,
             template: s.content?.template || existing?.template || "other",
             templateLabel: existing?.templateLabel || "Other",
+            planId: s.planId || existing?.planId || "free",
           };
         }),
       );
@@ -246,8 +282,14 @@ export default function ProfilePage() {
                 ...item,
                 status: data.site.status,
                 subdomain: data.site.subdomain || item.subdomain || null,
+                customDomain: data.site.customDomain || item.customDomain || null,
+                domainStatus: data.site.domainStatus || item.domainStatus || "none",
+                domainVerifiedAt: data.site.domainVerifiedAt || item.domainVerifiedAt || null,
+                cfValidationRecords: data.site.cfValidationRecords || data.validationRecords || item.cfValidationRecords || null,
+                cfSslStatus: data.site.cfSslStatus || item.cfSslStatus || null,
                 liveUrl: data.liveUrl || item.liveUrl || null,
                 name: data.site.content?.brand?.name || item.name,
+                planId: data.site.planId || item.planId || "free",
               }
             : item,
         ),
@@ -261,8 +303,11 @@ export default function ProfilePage() {
               ...prev,
               status: data.site.status,
               subdomain: data.site.subdomain || prev.subdomain || null,
+              customDomain: data.site.customDomain || prev.customDomain || null,
+              domainStatus: data.site.domainStatus || prev.domainStatus || "none",
               liveUrl: data.liveUrl || prev.liveUrl || null,
               name: data.site.content?.brand?.name || prev.name,
+              planId: data.site.planId || prev.planId || "free",
             }
           : prev,
       );
@@ -551,15 +596,21 @@ export default function ProfilePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "create-site",
-            brandName: extra.brandName || "My second website",
+            brandName: extra.brandName || "My additional website",
+            planId: newSitePlanId || extra.planId || "free",
           }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not create website");
         setCreateSitePrompt(false);
+        setNewSitePlanId(null);
         if (data.user) setUser(data.user);
         if (Array.isArray(data.sites)) {
           applySitesFromResponse(data, data.site?.id);
+          // Show the site switcher guide if this is an additional website (not the first one)
+          if (data.sites.length > 1) {
+            setShowSiteSwitcherGuide(true);
+          }
         }
         if (data.site) {
           const nextName = data.site.content?.brand?.name || data.site.slug;
@@ -579,6 +630,65 @@ export default function ProfilePage() {
         }
         setBillingMsg(data.message || "New website created — opening the editor…");
         router.push("/edit");
+        return;
+      }
+
+      // Handle on-site payment actions
+      if (action === "subscribe-onsite") {
+        const res = await fetch("/api/billing/charge-on-site", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "subscribe", planId: id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Subscription failed");
+        if (data.user) setUser(data.user);
+        if (data.billing) setBilling(data.billing);
+        if (data.invoices) setInvoices(data.invoices);
+        setBillingMsg(data.message || "Subscribed successfully!");
+        setPaymentSuccess({
+          message: data.message || "Subscribed successfully!",
+          nextHash: "#billing",
+          continueLabel: "Continue to Billing",
+          invoiceUrl: data.invoiceUrl || null,
+        });
+        setBillingBusy(false);
+        return;
+      }
+
+      if (action === "buy-site-slot-onsite") {
+        const res = await fetch("/api/billing/charge-on-site", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "buy-site-slot", slotPlanId: id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to add website slot");
+        if (data.user) setUser(data.user);
+        if (data.billing) setBilling(data.billing);
+        if (data.invoices) setInvoices(data.invoices);
+        if (data.slotPlanId) setNewSitePlanId(data.slotPlanId);
+        setBillingMsg(data.message || "Website slot added!");
+        const invoiceUrlWithPlan = data.slotPlanId && data.invoiceUrl
+          ? `${data.invoiceUrl}?ref=profile`
+          : data.invoiceUrl;
+        if (data.promptCreateSite) {
+          setCreateSitePrompt(true);
+          setPaymentSuccess({
+            message: data.message || "Website slot added! Create your new site now.",
+            nextHash: "#plan",
+            continueLabel: "Continue",
+            invoiceUrl: invoiceUrlWithPlan,
+          });
+        } else {
+          setPaymentSuccess({
+            message: data.message || "Website slot added!",
+            nextHash: "#billing",
+            continueLabel: "Continue to Billing",
+            invoiceUrl: invoiceUrlWithPlan,
+          });
+        }
+        setBillingBusy(false);
         return;
       }
 
@@ -863,15 +973,23 @@ export default function ProfilePage() {
                             />
                             <p className="mt-1.5 text-xs text-blue-100/70">/{item.slug}</p>
                           </div>
-                          <span
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                              status === "Published"
-                                ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
-                                : "border border-white/10 bg-white/5 text-blue-100"
-                            }`}
-                          >
-                            {status}
-                          </span>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                status === "Published"
+                                  ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+                                  : "border border-white/10 bg-white/5 text-blue-100"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                            <span
+                              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-200 capitalize"
+                              title={`Plan: ${item.planId || "free"}`}
+                            >
+                              {item.planId === "free" ? "Free" : item.planId}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -928,6 +1046,47 @@ export default function ProfilePage() {
                                 </a>
                               </div>
                             ) : null}
+
+                            {/* Custom plan: Choose subdomain */}
+                            {billing?.features?.technonaireAddress === "chosen" && (
+                              <div className="space-y-2 border-t border-white/10 pt-3">
+                                <h5 className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">
+                                  Custom address
+                                </h5>
+                                <SubdomainPicker
+                                  siteId={item.id}
+                                  currentSubdomain={item.subdomain}
+                                  canEdit={canGoLive}
+                                  onUpdate={(data) => {
+                                    if (data.site) {
+                                      applySitesFromResponse(data, item.id);
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {/* Domain plan: Custom domain setup */}
+                            {billing?.features?.domain && (
+                              <div className="space-y-2 border-t border-white/10 pt-3">
+                                <h5 className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">
+                                  Use your own domain
+                                </h5>
+                                <CustomDomainSetup
+                                  siteId={item.id}
+                                  currentDomain={item.customDomain}
+                                  domainStatus={item.domainStatus}
+                                  cfValidationRecords={item.cfValidationRecords}
+                                  cfSslStatus={item.cfSslStatus}
+                                  canEdit={canGoLive}
+                                  onUpdate={(data) => {
+                                    if (data.site) {
+                                      applySitesFromResponse(data, item.id);
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="mt-4 border-t border-white/10 pt-4">
@@ -1390,6 +1549,11 @@ export default function ProfilePage() {
           setPaymentSuccess(null);
           setActiveHash(replaceProfileLocation(next));
         }}
+      />
+
+      <SiteSwitcherGuide
+        open={showSiteSwitcherGuide}
+        onClose={() => setShowSiteSwitcherGuide(false)}
       />
     </div>
   );

@@ -23,11 +23,15 @@ function mapOwnerSite(s) {
     id: s.id,
     slug: s.slug,
     subdomain: s.subdomain || null,
+    customDomain: s.customDomain || null,
+    domainStatus: s.domainStatus || "none",
+    domainVerifiedAt: s.domainVerifiedAt || null,
     liveUrl: sitePublicUrl(s),
     name: s.content?.brand?.name || s.slug,
     status: s.status,
     template: s.content?.template || "other",
     templateLabel: getTemplate(s.content?.template || "other").label,
+    planId: s.planId || "free",
   };
 }
 

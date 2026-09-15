@@ -89,13 +89,35 @@ function mapSite(row) {
   if (!row) return null;
   const content =
     typeof row.content === "string" ? JSON.parse(row.content) : row.content || {};
+  
+  // Parse Cloudflare validation records if present
+  let cfValidationRecords = null;
+  if (row.cf_validation_records) {
+    try {
+      cfValidationRecords = typeof row.cf_validation_records === "string"
+        ? JSON.parse(row.cf_validation_records)
+        : row.cf_validation_records;
+    } catch (e) {
+      console.warn("Failed to parse cf_validation_records for site", row.id);
+    }
+  }
+  
   return {
     id: Number(row.id),
     slug: row.slug,
     subdomain: row.subdomain || null,
+    customDomain: row.custom_domain || null,
+    domainStatus: row.domain_status || "none",
+    domainVerifiedAt: row.domain_verified_at || null,
+    cfHostnameId: row.cf_hostname_id || null,
+    cfHostnameStatus: row.cf_hostname_status || null,
+    cfSslStatus: row.cf_ssl_status || null,
+    cfValidationRecords,
     conversationId: row.conversation_id == null ? null : Number(row.conversation_id),
     ownerId: row.owner_id == null ? null : Number(row.owner_id),
     status: row.status,
+    planId: row.plan_id || "free",
+    stripeSubscriptionItemId: row.stripe_subscription_item_id || null,
     content: normalizeSiteContent(content),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -692,7 +714,9 @@ export async function getSiteBySubdomain(subdomain) {
 }
 
 /**
- * Ensure a random Technonaire subdomain exists for Starter hosting.
+ * Ensure a Technonaire subdomain exists for hosting.
+ * - Starter plan: assigns a random subdomain if none exists
+ * - Custom plan: site should already have a chosen subdomain; if missing, assigns random as fallback
  * Keeps an existing subdomain stable across take-offline / go-live.
  */
 export async function ensureSiteSubdomain(siteId) {
@@ -703,6 +727,8 @@ export async function ensureSiteSubdomain(siteId) {
   if (!existing) throw new Error("Site not found");
   if (existing.subdomain) return existing;
 
+  // Custom plan users should have chosen their subdomain already
+  // But if missing, we'll assign a random one as fallback for Starter compatibility
   for (let attempt = 0; attempt < 12; attempt++) {
     const label = generateRandomSubdomain();
     if (isReservedSubdomain(label)) continue;
@@ -726,8 +752,15 @@ export async function ensureSiteSubdomain(siteId) {
 }
 
 export function sitePublicUrl(site) {
-  if (!site?.subdomain) return null;
-  return publicUrlForSubdomain(site.subdomain);
+  // Domain plan: use custom domain if verified
+  if (site?.customDomain && site?.domainStatus === "verified") {
+    return `https://${site.customDomain}`;
+  }
+  // Custom/Starter plan: use Technonaire subdomain
+  if (site?.subdomain) {
+    return publicUrlForSubdomain(site.subdomain);
+  }
+  return null;
 }
 
 function mapSiteVersion(row) {
@@ -1122,7 +1155,7 @@ export async function setActiveSiteForOwner(ownerId, siteId) {
  * Create an additional website for an existing owner (uses site_slots).
  * Sets the new site as the active editor site.
  */
-export async function createOwnerSite(ownerId, { brandName, template } = {}) {
+export async function createOwnerSite(ownerId, { brandName, template, planId = "free" } = {}) {
   const oid = toInt(ownerId);
   if (oid == null) throw new Error("Owner not found");
 
@@ -1130,16 +1163,18 @@ export async function createOwnerSite(ownerId, { brandName, template } = {}) {
   const owner = userRes.rows[0];
   if (!owner) throw new Error("Owner not found");
 
-  const slots = Math.min(2, Math.max(1, Number(owner.site_slots) || 1));
+  // Import MAX_WEBSITE_SLOTS from billing
+  const { MAX_WEBSITE_SLOTS } = await import("./billing");
+  const slots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(owner.site_slots) || 1));
   const used = await countSitesByOwner(oid);
   if (slots <= 1) {
     throw new Error(
-      "Pay for +1 Website in Profile first. After payment succeeds you can create one extra site.",
+      "Add another website in Profile first. After payment you can create your additional site.",
     );
   }
   if (used >= slots) {
     throw new Error(
-      `Website slot limit reached (${used}/${slots}). You can add one extra site after a successful payment.`,
+      `Website limit reached (${used}/${slots}). Add another website in Profile to increase your limit.`,
     );
   }
 
@@ -1156,6 +1191,7 @@ export async function createOwnerSite(ownerId, { brandName, template } = {}) {
   }
 
   const resolvedTemplate = resolveTemplateId(template || "other");
+  const resolvedPlanId = String(planId || "free").toLowerCase().trim();
   const content = normalizeSiteContent(
     createDefaultSiteContent({
       brandName: name,
@@ -1168,10 +1204,10 @@ export async function createOwnerSite(ownerId, { brandName, template } = {}) {
 
   return withTransaction(async (client) => {
     const siteRes = await client.query(
-      `INSERT INTO sites (slug, conversation_id, owner_id, status, content)
-       VALUES ($1, NULL, $2, 'draft', $3::jsonb)
+      `INSERT INTO sites (slug, conversation_id, owner_id, status, content, plan_id)
+       VALUES ($1, NULL, $2, 'draft', $3::jsonb, $4)
        RETURNING *`,
-      [slug, oid, JSON.stringify(content)],
+      [slug, oid, JSON.stringify(content), resolvedPlanId],
     );
     const site = withNormalizedContent(mapSite(siteRes.rows[0]));
 

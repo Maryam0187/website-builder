@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import PlanChangeDialog from "@/components/billing/PlanChangeDialog";
+import AddPaymentMethodDialog from "@/components/billing/AddPaymentMethodDialog";
 
 function formatMoney(cents) {
   return `$${((Number(cents) || 0) / 100).toFixed(0)}`;
@@ -24,15 +25,15 @@ function formatDate(value) {
 function featureList(features) {
   const address =
     features?.technonaireAddress === "random"
-      ? "random.technonaire.site"
+      ? "Random Technonaire address"
       : features?.technonaireAddress === "chosen"
-        ? "Chosen Technonaire address"
+        ? "Choose your .technonaire.site address"
         : null;
   return [
     features?.live ? "Publishing" : null,
     features?.hosting ? "Hosting + SSL" : null,
     address,
-    features?.domain ? "Custom domain" : null,
+    features?.domain ? "Your own domain (DNS setup)" : null,
     features?.pwa ? "PWA app" : null,
     features?.premiumTemplates ? "All templates" : null,
     features?.templateSwitch ? "Editor · switch templates" : null,
@@ -116,6 +117,8 @@ export default function PackageFlow({
 }) {
   const [showSlotPicker, setShowSlotPicker] = useState(false);
   const [planChangePrompt, setPlanChangePrompt] = useState(null);
+  const [showAddPaymentDialog, setShowAddPaymentDialog] = useState(false);
+  const [pendingPurchase, setPendingPurchase] = useState(null);
   const subStatus = billing?.subscriptionStatus || "none";
   const paidActive = Boolean(billing?.subscriptionActive);
   const allPlans = billing?.plans || [];
@@ -213,8 +216,7 @@ export default function PackageFlow({
                 Everyone starts on Free. Subscribe to Starter ($9), Custom ($19), Domain ($29), or
                 Pro + PWA ($39) to publish and host. Already subscribed? Upgrade charges only the
                 difference on your saved card. Downgrade switches plans with no charge now — the
-                lower price starts next month. Add a 2nd website on any plan — Free $5/mo, Starter
-                $7/mo, Custom $15/mo, Domain $24/mo, Pro $34/mo.
+                lower price starts next month. Add another website available at discounted monthly prices.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -275,16 +277,9 @@ export default function PackageFlow({
                         const card = billing?.cardOnFile;
                         const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                         if (!hasCard) {
-                          setPlanChangePrompt({
-                            planId: item.id,
-                            mode: "upgrade-need-card",
-                            title: `Upgrade to ${item.name}?`,
-                            description: `To charge the ${formatMoney(differenceCents)} difference without Checkout, add a card first. You can update your payment method in Stripe, then come back and upgrade.`,
-                            confirmLabel: "Add or change card",
-                            requireChargeConfirm: false,
-                            cardLabel: null,
-                            changeCardOnly: true,
-                          });
+                          // MARKER_UPGRADE_NO_CARD
+                          // No card → always redirect to Stripe Checkout
+                          onAction("checkout", item.id);
                           return;
                         }
                         setPlanChangePrompt({
@@ -311,7 +306,26 @@ export default function PackageFlow({
                         });
                         return;
                       }
-                      onAction("subscribe", item.id);
+                      // For initial subscribe, check if user has card
+                      const card = billing?.cardOnFile;
+                      const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
+                      if (!hasCard) {
+                        // No card → always redirect to Stripe Checkout
+                        onAction("checkout", item.id);
+                        return;
+                      }
+                      // Has card, show confirmation
+                      setPlanChangePrompt({
+                        planId: item.id,
+                        mode: "subscribe",
+                        title: `Subscribe to ${item.name}?`,
+                        description: `Confirm to charge ${item.priceLabel} now on your saved card. You'll be billed monthly.`,
+                        confirmLabel: `Subscribe · ${item.priceLabel}`,
+                        requireChargeConfirm: true,
+                        chargeConfirmLabel: `I confirm charging ${item.priceLabel} to ${card.label}`,
+                        cardLabel: card.label,
+                        changeCardOnly: false,
+                      });
                     }}
                   />
                 );
@@ -321,9 +335,9 @@ export default function PackageFlow({
 
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-semibold text-white">Additional websites</h3>
+              <h3 className="text-lg font-semibold text-white">Add another website</h3>
               <p className="mt-1 text-sm text-blue-100">
-                Each plan includes 1 website. You can add a second website on any plan.
+                Each plan includes 1 website. You can add more websites — each gets its own plan and price.
               </p>
             </div>
 
@@ -335,9 +349,9 @@ export default function PackageFlow({
                 onClick={() => onCreateSiteRequest?.()}
                 className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
               >
-                Create your extra website
+                Create your additional website
               </button>
-            ) : sitesUsed != null && sitesUsed >= siteSlots && siteSlots >= 2 ? (
+            ) : sitesUsed != null && sitesUsed >= siteSlots && siteSlots >= (billing?.maxWebsiteSlots || 10) ? (
               <p className="text-sm text-emerald-200">
                 Extra website already created ({sitesUsed} of {siteSlots}).
               </p>
@@ -351,16 +365,16 @@ export default function PackageFlow({
                     onClick={() => setShowSlotPicker(true)}
                     className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-5 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/25 disabled:opacity-60"
                   >
-                    + Add second website
+                    + Add another website
                   </button>
                 ) : (
                   /* Step 2 — inline plan picker */
                   <div className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-semibold text-white">Choose a plan for your second website</p>
+                        <p className="font-semibold text-white">Step 1: Choose a plan for your new website</p>
                         <p className="mt-0.5 text-xs text-blue-200/70">
-                          Each site can have its own plan. You&apos;ll be charged via Stripe.
+                          Each site can have its own plan. You&apos;ll be charged on-site.
                         </p>
                       </div>
                       <button
@@ -373,11 +387,11 @@ export default function PackageFlow({
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {[
-                        { id: "free",    name: "Free",      price: "$5/mo",  hint: "Draft only · no hosting" },
+                        { id: "free",    name: "Free",      price: "$5/mo",  hint: "Draft only · no live hosting" },
                         { id: "starter", name: "Starter",   price: "$7/mo",  hint: "Live · auto Technonaire address" },
                         { id: "custom",  name: "Custom",    price: "$15/mo", hint: "Live · chosen Technonaire address" },
-                        { id: "domain",  name: "Domain",    price: "$24/mo", hint: "Live · your own domain" },
-                        { id: "pro",     name: "Pro + PWA", price: "$34/mo", hint: "Live · domain + installable PWA" },
+                        { id: "domain",  name: "Domain",    price: "$24/mo", hint: "Live · use your own domain" },
+                        { id: "pro",     name: "Pro + PWA", price: "$34/mo", hint: "Live · domain + installable app" },
                       ].map((slot) => {
                         const isCurrent = currentPlanId === slot.id;
                         return (
@@ -387,12 +401,26 @@ export default function PackageFlow({
                             disabled={busy}
                             onClick={() => {
                               setShowSlotPicker(false);
+                              const card = billing?.cardOnFile;
+                              const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
+                              
+                              if (!hasCard) {
+                                // No card → always redirect to Stripe Checkout
+                                onAction("buy-site-slot", slot.id);
+                                return;
+                              }
+                              
                               setPlanChangePrompt({
                                 mode: "buy-slot",
                                 slotPlanId: slot.id,
-                                title: `Add a second website on ${slot.name}?`,
-                                description: `You’ll pay ${slot.price} via Stripe for one extra website slot (${slot.hint}). After payment you can name and create the new site.`,
-                                confirmLabel: `Continue to pay · ${slot.price}`,
+                                slotName: slot.name,
+                                title: `Add website on ${slot.name}?`,
+                                description: `Confirm to charge ${slot.price} now on your saved card for one extra website slot (${slot.hint}). After payment you can name and create the new site.`,
+                                confirmLabel: `Charge ${slot.price} & add website`,
+                                requireChargeConfirm: true,
+                                chargeConfirmLabel: `I confirm charging ${slot.price} to ${card.label}`,
+                                cardLabel: card.label,
+                                changeCardOnly: false,
                               });
                             }}
                             className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition disabled:opacity-60 ${
@@ -406,7 +434,7 @@ export default function PackageFlow({
                                 {slot.name}
                                 {isCurrent ? (
                                   <span className="ml-1.5 text-[10px] font-bold text-cyan-300 uppercase">
-                                    your plan
+                                    your current plan
                                   </span>
                                 ) : null}
                               </span>
@@ -553,7 +581,7 @@ export default function PackageFlow({
       <PlanChangeDialog
         open={Boolean(planChangePrompt)}
         eyebrow={
-          planChangePrompt?.mode === "buy-slot" ? "Additional website" : "Plan"
+          planChangePrompt?.mode === "buy-slot" ? "Add another website" : "Plan"
         }
         title={planChangePrompt?.title || ""}
         description={planChangePrompt?.description || ""}
@@ -583,12 +611,44 @@ export default function PackageFlow({
           if (planChangePrompt?.mode === "buy-slot") {
             const slotPlanId = planChangePrompt.slotPlanId;
             setPlanChangePrompt(null);
-            if (slotPlanId) onAction("buy-site-slot", slotPlanId);
+            if (slotPlanId) onAction("buy-site-slot-onsite", slotPlanId);
             return;
           }
           const planId = planChangePrompt?.planId;
           setPlanChangePrompt(null);
           if (planId) onAction("subscribe", planId);
+        }}
+      />
+
+      <AddPaymentMethodDialog
+        open={showAddPaymentDialog}
+        title="Add payment method"
+        description={
+          pendingPurchase?.planName
+            ? `Add a card to subscribe to ${pendingPurchase.planName} on-site.`
+            : pendingPurchase?.slotName
+              ? `Add a card to purchase an additional website slot for ${pendingPurchase.slotPrice}.`
+              : "Add a card to complete your purchase on-site without redirecting to Stripe Checkout."
+        }
+        busy={busy}
+        onSuccess={() => {
+          setShowAddPaymentDialog(false);
+          // After card is added, automatically retry the purchase
+          if (pendingPurchase?.action === "subscribe") {
+            onAction("subscribe-onsite", pendingPurchase.planId);
+          } else if (pendingPurchase?.action === "buy-site-slot") {
+            onAction("buy-site-slot-onsite", pendingPurchase.slotPlanId);
+          }
+          setPendingPurchase(null);
+        }}
+        onCancel={() => {
+          if (!busy) {
+            setShowAddPaymentDialog(false);
+            setPendingPurchase(null);
+          }
+        }}
+        onError={(err) => {
+          console.error("Payment method error:", err);
         }}
       />
     </div>
