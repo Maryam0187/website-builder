@@ -284,3 +284,20 @@ CREATE INDEX IF NOT EXISTS idx_pricing_configs_region ON pricing_configs(region)
 CREATE INDEX IF NOT EXISTS idx_pricing_configs_active ON pricing_configs(active);
 CREATE INDEX IF NOT EXISTS idx_pricing_history_config_id ON pricing_history(pricing_config_id);
 CREATE INDEX IF NOT EXISTS idx_pricing_history_changed_at ON pricing_history(changed_at DESC);
+
+-- Version history and restore
+CREATE TABLE IF NOT EXISTS conversation_versions (
+  id BIGSERIAL PRIMARY KEY,
+  conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  version_number INT NOT NULL,
+  content JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  label TEXT NULL,
+  is_autosave BOOLEAN NOT NULL DEFAULT false,
+  is_snapshot BOOLEAN NOT NULL DEFAULT false,
+  UNIQUE (conversation_id, version_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_versions_conversation ON conversation_versions(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_versions_created_at ON conversation_versions(conversation_id, created_at DESC);
