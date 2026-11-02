@@ -23,6 +23,7 @@ import {
 } from "@/lib/billing";
 import { isStripeConfigured } from "@/lib/stripe";
 import { countLiveSitesByOwner, countSitesByOwner } from "@/lib/store-actions";
+import { isStripeSupported } from "@/lib/pricing";
 
 async function billingForUser(user) {
   const fresh = publicUser(await getUserById(user.id));
@@ -56,6 +57,16 @@ export async function POST(request) {
 
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || "").trim();
+
+  // Block Pakistan from Stripe operations
+  const stripeActions = ["subscribe", "checkout", "buy-site-slot", "buy-addon", "cancel-subscription", "downgrade"];
+  const userRegion = user.region || "usa";
+  if (stripeActions.includes(action) && !isStripeSupported(userRegion)) {
+    return NextResponse.json({
+      error: "Stripe payments not available in your region. Please contact us for payment options.",
+      region: userRegion,
+    }, { status: 400 });
+  }
 
   try {
     if (action === "start-trial") {

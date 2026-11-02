@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
 import { getPlan } from "@/lib/billing";
 import { getUserById } from "@/lib/auth";
+import { isStripeSupported } from "@/lib/pricing";
 
 /**
  * POST /api/billing/checkout-session
@@ -17,6 +18,15 @@ export async function POST(request) {
   const user = await requireUser(["owner"]);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Block Pakistan from Stripe
+  const userRegion = user.region || "usa";
+  if (!isStripeSupported(userRegion)) {
+    return NextResponse.json({
+      error: "Stripe payments not available in your region. Please contact us for payment options.",
+      region: userRegion,
+    }, { status: 400 });
   }
 
   try {

@@ -165,7 +165,12 @@ export async function ensureAdminUser() {
   const password = process.env.ADMIN_PASSWORD || "changeme123";
 
   const existing = await query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
-  if (existing.rows.length) return;
+  if (existing.rows.length) {
+    // Admin exists, seed pricing if needed
+    const { seedDefaultPricing } = await import("./seed-pricing");
+    await seedDefaultPricing();
+    return;
+  }
 
   const passwordHash = await hashPassword(password);
   await query(
@@ -173,6 +178,10 @@ export async function ensureAdminUser() {
      VALUES ($1, $2, 'admin', $3, false)`,
     [email, "Technonaire Admin", passwordHash],
   );
+  
+  // Seed pricing after admin creation
+  const { seedDefaultPricing } = await import("./seed-pricing");
+  await seedDefaultPricing();
 }
 
 export async function createSession(userId) {

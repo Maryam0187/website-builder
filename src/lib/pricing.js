@@ -211,6 +211,33 @@ export function getRegion(regionId) {
 
 /**
  * Get pricing for a region and plan
+ * First tries database (admin-configured), falls back to static config
+ */
+export async function getRegionPricingAsync(regionId, planId) {
+  try {
+    const { getPricingFromDB } = await import('./pricing-cache.js');
+    const dbPricing = await getPricingFromDB(regionId, planId);
+    
+    if (dbPricing) {
+      return {
+        firstSite: dbPricing.firstSite,
+        extraSite: dbPricing.extraSite,
+        currency: dbPricing.currency,
+        active: dbPricing.active,
+        stripePriceIds: dbPricing.stripePriceIds,
+      };
+    }
+  } catch (error) {
+    // DB not available or not seeded yet, fall back to static
+    console.warn('Pricing DB not available, using static pricing:', error.message);
+  }
+  
+  // Fallback to static pricing
+  return getRegionPricing(regionId, planId);
+}
+
+/**
+ * Get pricing for a region and plan (synchronous, static only)
  */
 export function getRegionPricing(regionId, planId) {
   const region = String(regionId || "usa").toLowerCase();
