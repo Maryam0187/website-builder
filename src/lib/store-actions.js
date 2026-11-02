@@ -53,6 +53,7 @@ function mapConversation(row) {
     botStep,
     botAnswers,
     status: row.status,
+    region: row.region || 'usa',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1044,10 +1045,10 @@ export async function createDraftFromConversation({
     const site = mapSite(siteRes.rows[0]);
 
     const userRes = await client.query(
-      `INSERT INTO users (email, name, role, site_id, password_hash, must_change_password)
-       VALUES ($1, $2, 'owner', $3, $4, true)
+      `INSERT INTO users (email, name, role, site_id, password_hash, must_change_password, region)
+       VALUES ($1, $2, 'owner', $3, $4, true, $5)
        RETURNING *`,
-      [email, brandName || conversation.name || "Site owner", site.id, passwordHash],
+      [email, brandName || conversation.name || "Site owner", site.id, passwordHash, conversation.region || 'usa'],
     );
     const ownerId = Number(userRes.rows[0].id);
 

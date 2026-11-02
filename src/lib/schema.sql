@@ -32,6 +32,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_pending_secret TEXT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_ask_life TEXT NOT NULL DEFAULT 'every';
 
+-- Multi-region support
+ALTER TABLE users ADD COLUMN IF NOT EXISTS region TEXT NOT NULL DEFAULT 'usa';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS region_locked BOOLEAN NOT NULL DEFAULT false;
+
 CREATE TABLE IF NOT EXISTS invoices (
   id            BIGSERIAL PRIMARY KEY,
   user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -96,6 +100,7 @@ CREATE TABLE IF NOT EXISTS messages (
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bot_onboarded BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bot_step TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bot_answers JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS region TEXT NOT NULL DEFAULT 'usa';
 
 DO $$
 BEGIN
@@ -215,6 +220,26 @@ CREATE TABLE IF NOT EXISTS pro_contact_requests (
 CREATE INDEX IF NOT EXISTS idx_pro_contact_requests_user_id ON pro_contact_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_pro_contact_requests_email ON pro_contact_requests(email);
 CREATE INDEX IF NOT EXISTS idx_pro_contact_requests_status ON pro_contact_requests(status);
+
+-- Payment requests for regions without Stripe support (e.g. Pakistan)
+CREATE TABLE IF NOT EXISTS payment_requests (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  name        TEXT NOT NULL,
+  email       TEXT NOT NULL,
+  message     TEXT NOT NULL DEFAULT '',
+  region      TEXT NOT NULL,
+  plan_id     TEXT NOT NULL,
+  mode        TEXT NOT NULL DEFAULT 'subscribe' CHECK (mode IN ('subscribe', 'buy-slot')),
+  status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'activated', 'declined')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_requests_user_id ON payment_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_requests_email ON payment_requests(email);
+CREATE INDEX IF NOT EXISTS idx_payment_requests_region ON payment_requests(region);
+CREATE INDEX IF NOT EXISTS idx_payment_requests_status ON payment_requests(status);
 
 -- Add grace period columns for payment failures
 ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_failed_at TIMESTAMPTZ NULL;
