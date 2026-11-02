@@ -213,18 +213,20 @@ export function getRegion(regionId) {
  * Get pricing for a region and plan
  * First tries database (admin-configured), falls back to static config
  */
-export async function getRegionPricingAsync(regionId, planId) {
+export async function getRegionPricingAsync(regionId, planId, billingInterval = 'monthly') {
   try {
     const { getPricingFromDB } = await import('./pricing-cache.js');
     const dbPricing = await getPricingFromDB(regionId, planId);
     
     if (dbPricing) {
+      const isYearly = billingInterval === 'yearly';
+      
       return {
-        firstSite: dbPricing.firstSite,
-        extraSite: dbPricing.extraSite,
+        firstSite: isYearly ? dbPricing.firstSiteYearly : dbPricing.firstSite,
+        extraSite: isYearly ? dbPricing.extraSiteYearly : dbPricing.extraSite,
         currency: dbPricing.currency,
         active: dbPricing.active,
-        stripePriceIds: dbPricing.stripePriceIds,
+        stripePriceIds: isYearly ? dbPricing.stripePriceIdsYearly : dbPricing.stripePriceIds,
       };
     }
   } catch (error) {
@@ -233,7 +235,20 @@ export async function getRegionPricingAsync(regionId, planId) {
   }
   
   // Fallback to static pricing
-  return getRegionPricing(regionId, planId);
+  const pricing = getRegionPricing(regionId, planId);
+  
+  // For yearly: 10x monthly (2 months free)
+  if (billingInterval === 'yearly') {
+    return {
+      firstSite: pricing.firstSite ? pricing.firstSite * 10 : null,
+      extraSite: pricing.extraSite ? pricing.extraSite * 10 : null,
+      currency: pricing.currency,
+      active: pricing.active,
+      stripePriceIds: null, // Yearly prices must be configured in admin
+    };
+  }
+  
+  return pricing;
 }
 
 /**

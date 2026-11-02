@@ -25,9 +25,13 @@ export async function getCachedPricing() {
       currency,
       first_site_cents,
       extra_site_cents,
+      first_site_cents_yearly,
+      extra_site_cents_yearly,
       active,
       stripe_first_site_price_id,
-      stripe_extra_site_price_id
+      stripe_extra_site_price_id,
+      stripe_first_site_price_id_yearly,
+      stripe_extra_site_price_id_yearly
     FROM pricing_configs
     ORDER BY region, plan_id
   `);
@@ -40,11 +44,17 @@ export async function getCachedPricing() {
     acc[row.region][row.plan_id] = {
       firstSite: row.first_site_cents,
       extraSite: row.extra_site_cents,
+      firstSiteYearly: row.first_site_cents_yearly,
+      extraSiteYearly: row.extra_site_cents_yearly,
       currency: row.currency,
       active: row.active,
       stripePriceIds: {
         first: row.stripe_first_site_price_id,
         extra: row.stripe_extra_site_price_id,
+      },
+      stripePriceIdsYearly: {
+        first: row.stripe_first_site_price_id_yearly,
+        extra: row.stripe_extra_site_price_id_yearly,
       },
     };
     return acc;

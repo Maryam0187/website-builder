@@ -301,3 +301,49 @@ CREATE TABLE IF NOT EXISTS conversation_versions (
 
 CREATE INDEX IF NOT EXISTS idx_conversation_versions_conversation ON conversation_versions(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_versions_created_at ON conversation_versions(conversation_id, created_at DESC);
+
+-- Discount system: founding offers, coupons, annual billing
+CREATE TABLE IF NOT EXISTS discounts (
+  id BIGSERIAL PRIMARY KEY,
+  type TEXT NOT NULL CHECK (type IN ('founding', 'coupon')),
+  code TEXT NULL UNIQUE,
+  name TEXT NOT NULL,
+  value_type TEXT NOT NULL CHECK (value_type IN ('percent', 'fixed')),
+  value_amount INT NOT NULL,
+  duration_type TEXT NOT NULL CHECK (duration_type IN ('once', 'repeating', 'forever')),
+  duration_months INT NULL,
+  max_redemptions INT NULL,
+  used_count INT NOT NULL DEFAULT 0,
+  applicable_plans TEXT[] NULL,
+  billing_interval TEXT NULL CHECK (billing_interval IN ('monthly', 'yearly', NULL)),
+  expiry_date TIMESTAMPTZ NULL,
+  active BOOLEAN NOT NULL DEFAULT true,
+  stripe_coupon_id TEXT NULL,
+  stripe_promo_code_id TEXT NULL,
+  created_by_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS discount_redemptions (
+  id BIGSERIAL PRIMARY KEY,
+  discount_id BIGINT NOT NULL REFERENCES discounts(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subscription_id TEXT NULL,
+  redeemed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_discounts_code ON discounts(code) WHERE code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_discounts_type ON discounts(type);
+CREATE INDEX IF NOT EXISTS idx_discounts_active ON discounts(active);
+CREATE INDEX IF NOT EXISTS idx_discount_redemptions_user ON discount_redemptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_discount_redemptions_discount ON discount_redemptions(discount_id);
+
+-- Add yearly pricing support to pricing_configs
+ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS first_site_cents_yearly INT NULL;
+ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS extra_site_cents_yearly INT NULL;
+ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS stripe_first_site_price_id_yearly TEXT NULL;
+ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS stripe_extra_site_price_id_yearly TEXT NULL;
+
+-- Track applied discount on users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS applied_discount_id BIGINT NULL REFERENCES discounts(id) ON DELETE SET NULL;
