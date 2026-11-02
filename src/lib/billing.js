@@ -20,6 +20,8 @@ const SITE_HOST_ROOT = process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebui
 export const TRIAL_DAYS = 14;
 export const BILLING_PERIOD_DAYS = 30;
 export const BILLING_CURRENCY = "usd";
+export const GRACE_PERIOD_DAYS = 7;
+export const DOMAIN_RELEASE_DAYS = 30;
 
 /** Maximum total websites per account (1 first + up to 9 additional by default). */
 export const MAX_WEBSITE_SLOTS = Number(process.env.MAX_WEBSITE_SLOTS) || 10;
@@ -845,6 +847,145 @@ export async function updateUserBilling(
 
 export async function startTrial() {
   throw new Error("Free trial is not available. Subscribe to Starter, Custom, Domain, or Pro to go live.");
+}
+
+/**
+ * Handle payment failure - start grace period
+ */
+export async function startGracePeriod(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error("User not found");
+  
+  const gracePeriodEnd = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+  
+  await query(
+    `UPDATE users 
+     SET payment_failed_at = COALESCE(payment_failed_at, now()),
+         grace_period_ends_at = $2,
+         subscription_status = 'past_due'
+     WHERE id = $1`,
+    [id, gracePeriodEnd.toISOString()]
+  );
+  
+  return getUserById(id);
+}
+
+/**
+ * Clear grace period - payment succeeded
+ */
+export async function clearGracePeriod(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error("User not found");
+  
+  await query(
+    `UPDATE users 
+     SET payment_failed_at = NULL,
+         grace_period_ends_at = NULL
+     WHERE id = $1`,
+    [id]
+  );
+  
+  return getUserById(id);
+}
+
+/**
+ * Unpublish all sites for a user (grace period expired)
+ */
+export async function unpublishUserSites(userId, reason = "payment_failed") {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error("User not found");
+  
+  await query(
+    `UPDATE sites 
+     SET status = 'draft',
+         unpublished_at = now(),
+         unpublish_reason = $2
+     WHERE owner_id = $1 AND status = 'published'`,
+    [id, reason]
+  );
+}
+
+/**
+ * Check and enforce grace periods for all users
+ * Run this periodically (cron job or background task)
+ */
+export async function enforceGracePeriods() {
+  const { rows } = await query(
+    `SELECT id, email, name, grace_period_ends_at, payment_failed_at
+     FROM users
+     WHERE grace_period_ends_at IS NOT NULL
+       AND grace_period_ends_at < now()
+       AND subscription_status = 'past_due'`
+  );
+  
+  const results = [];
+  for (const user of rows) {
+    try {
+      await unpublishUserSites(user.id, "grace_period_expired");
+      await query(
+        `UPDATE users 
+         SET subscription_status = 'unpaid'
+         WHERE id = $1`,
+        [user.id]
+      );
+      results.push({ userId: user.id, email: user.email, unpublished: true });
+    } catch (error) {
+      results.push({ userId: user.id, email: user.email, error: error.message });
+    }
+  }
+  
+  return results;
+}
+
+/**
+ * Release custom subdomains and domains after 30 days unpaid
+ */
+export async function releaseStaleDomains() {
+  const releaseDate = new Date(Date.now() - DOMAIN_RELEASE_DAYS * 24 * 60 * 60 * 1000);
+  
+  const { rows } = await query(
+    `SELECT s.id, s.subdomain, s.custom_domain, s.owner_id
+     FROM sites s
+     JOIN users u ON s.owner_id = u.id
+     WHERE s.unpublished_at < $1
+       AND (s.subdomain IS NOT NULL OR s.custom_domain IS NOT NULL)
+       AND u.subscription_status IN ('unpaid', 'canceled')`,
+    [releaseDate.toISOString()]
+  );
+  
+  const results = [];
+  for (const site of rows) {
+    try {
+      // Clear subdomain and custom domain
+      await query(
+        `UPDATE sites 
+         SET subdomain = NULL,
+             custom_domain = NULL,
+             domain_status = 'none',
+             cf_hostname_id = NULL,
+             cf_hostname_status = NULL,
+             cf_ssl_status = NULL,
+             cf_validation_records = NULL,
+             cf_metadata = NULL
+         WHERE id = $1`,
+        [site.id]
+      );
+      
+      results.push({ 
+        siteId: site.id, 
+        subdomain: site.subdomain, 
+        customDomain: site.custom_domain,
+        released: true 
+      });
+    } catch (error) {
+      results.push({ 
+        siteId: site.id, 
+        error: error.message 
+      });
+    }
+  }
+  
+  return results;
 }
 
 export async function createInvoice(
