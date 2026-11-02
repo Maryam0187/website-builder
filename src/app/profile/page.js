@@ -692,15 +692,32 @@ export default function ProfilePage() {
         return;
       }
 
+      // Handle checkout redirect to on-site checkout page
+      if (action === "checkout") {
+        const params = new URLSearchParams({
+          planId: id,
+          mode: "subscribe",
+        });
+        window.location.href = `/checkout?${params.toString()}`;
+        return;
+      }
+
+      if (action === "buy-site-slot") {
+        const params = new URLSearchParams({
+          planId: id,
+          slotPlanId: id,
+          mode: "buy-slot",
+        });
+        window.location.href = `/checkout?${params.toString()}`;
+        return;
+      }
+
       const body = { action, ...extra };
-      if (action === "subscribe" || action === "checkout") body.planId = id;
+      if (action === "subscribe") body.planId = id;
       if (action === "buy-addon") body.addonId = id;
-      if (action === "buy-site-slot" && id) body.slotPlanId = id;
       if (
         action === "subscribe" ||
-        action === "checkout" ||
-        action === "buy-addon" ||
-        action === "buy-site-slot"
+        action === "buy-addon"
       ) {
         body.returnTo =
           String(extra.returnTo || window.location.hash || activeHash || "#plan")
