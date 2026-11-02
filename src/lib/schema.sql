@@ -246,3 +246,41 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_failed_at TIMESTAMPTZ NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS grace_period_ends_at TIMESTAMPTZ NULL;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS unpublished_at TIMESTAMPTZ NULL;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS unpublish_reason TEXT NULL;
+
+-- Admin-configurable pricing system
+CREATE TABLE IF NOT EXISTS pricing_configs (
+  id BIGSERIAL PRIMARY KEY,
+  region TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  first_site_cents INT NOT NULL,
+  extra_site_cents INT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT true,
+  stripe_first_site_price_id TEXT NULL,
+  stripe_extra_site_price_id TEXT NULL,
+  created_by_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(region, plan_id)
+);
+
+-- Pricing change audit log
+CREATE TABLE IF NOT EXISTS pricing_history (
+  id BIGSERIAL PRIMARY KEY,
+  pricing_config_id BIGINT NOT NULL REFERENCES pricing_configs(id) ON DELETE CASCADE,
+  region TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  first_site_cents INT NOT NULL,
+  extra_site_cents INT NOT NULL,
+  active BOOLEAN NOT NULL,
+  stripe_first_site_price_id TEXT NULL,
+  stripe_extra_site_price_id TEXT NULL,
+  changed_by_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  change_reason TEXT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pricing_configs_region ON pricing_configs(region);
+CREATE INDEX IF NOT EXISTS idx_pricing_configs_active ON pricing_configs(active);
+CREATE INDEX IF NOT EXISTS idx_pricing_history_config_id ON pricing_history(pricing_config_id);
+CREATE INDEX IF NOT EXISTS idx_pricing_history_changed_at ON pricing_history(changed_at DESC);
