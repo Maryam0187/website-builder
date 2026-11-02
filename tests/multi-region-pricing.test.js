@@ -18,7 +18,7 @@ import {
 describe("Region Configuration", () => {
   test("all regions defined with required fields", () => {
     const regionKeys = Object.keys(REGIONS);
-    assert.ok(regionKeys.length >= 4, "Should have at least 4 regions");
+    assert.ok(regionKeys.length >= 5, "Should have at least 5 regions");
     
     Object.values(REGIONS).forEach(region => {
       assert.ok(region.id, "Region must have id");
@@ -34,28 +34,30 @@ describe("Region Configuration", () => {
     const usa = getRegion("usa");
     assert.equal(usa.currency, "USD");
     assert.equal(usa.paymentProvider, "stripe");
-    assert.ok(usa.stripePriceEnvPrefix);
   });
 
-  test("Canada uses CAD currency with Stripe", () => {
+  test("Canada uses USD currency with Stripe (for now)", () => {
     const canada = getRegion("canada");
-    assert.equal(canada.currency, "CAD");
+    assert.equal(canada.currency, "USD");
     assert.equal(canada.paymentProvider, "stripe");
-    assert.ok(canada.stripePriceEnvPrefix);
   });
 
-  test("Europe uses EUR currency with Stripe", () => {
+  test("Europe uses USD currency with Stripe (for now)", () => {
     const europe = getRegion("europe");
-    assert.equal(europe.currency, "EUR");
+    assert.equal(europe.currency, "USD");
     assert.equal(europe.paymentProvider, "stripe");
-    assert.ok(europe.stripePriceEnvPrefix);
+  });
+
+  test("Middle East uses USD currency with Stripe", () => {
+    const middleEast = getRegion("middle-east");
+    assert.equal(middleEast.currency, "USD");
+    assert.equal(middleEast.paymentProvider, "stripe");
   });
 
   test("Pakistan uses PKR currency WITHOUT Stripe", () => {
     const pakistan = getRegion("pakistan");
     assert.equal(pakistan.currency, "PKR");
     assert.equal(pakistan.paymentProvider, "contact");
-    assert.equal(pakistan.stripePriceEnvPrefix, null);
   });
 });
 
@@ -70,6 +72,10 @@ describe("Stripe Support", () => {
 
   test("Europe supports Stripe", () => {
     assert.equal(isStripeSupported("europe"), true);
+  });
+
+  test("Middle East supports Stripe", () => {
+    assert.equal(isStripeSupported("middle-east"), true);
   });
 
   test("Pakistan does NOT support Stripe", () => {
@@ -102,26 +108,36 @@ describe("Region Pricing", () => {
     assert.equal(pricing.extraSite, null);
   });
 
-  test("Canada has TODO pricing defined", () => {
-    const pricing = getRegionPricing("canada", "starter");
-    assert.ok(pricing.firstSite > 0, "CAD pricing should be set");
-    assert.ok(pricing.extraSite > 0, "CAD pricing should be set");
+  test("Canada uses same USD pricing as USA", () => {
+    const usaPricing = getRegionPricing("usa", "starter");
+    const canadaPricing = getRegionPricing("canada", "starter");
+    assert.equal(canadaPricing.firstSite, usaPricing.firstSite);
+    assert.equal(canadaPricing.extraSite, usaPricing.extraSite);
   });
 
-  test("Europe has TODO pricing defined", () => {
-    const pricing = getRegionPricing("europe", "starter");
-    assert.ok(pricing.firstSite > 0, "EUR pricing should be set");
-    assert.ok(pricing.extraSite > 0, "EUR pricing should be set");
+  test("Europe uses same USD pricing as USA", () => {
+    const usaPricing = getRegionPricing("usa", "custom");
+    const europePricing = getRegionPricing("europe", "custom");
+    assert.equal(europePricing.firstSite, usaPricing.firstSite);
+    assert.equal(europePricing.extraSite, usaPricing.extraSite);
   });
 
-  test("Pakistan has TODO pricing defined", () => {
+  test("Middle East uses same USD pricing as USA", () => {
+    const usaPricing = getRegionPricing("usa", "domain");
+    const middleEastPricing = getRegionPricing("middle-east", "domain");
+    assert.equal(middleEastPricing.firstSite, usaPricing.firstSite);
+    assert.equal(middleEastPricing.extraSite, usaPricing.extraSite);
+  });
+
+  test("Pakistan has different PKR pricing", () => {
     const pricing = getRegionPricing("pakistan", "starter");
     assert.ok(pricing.firstSite > 0, "PKR pricing should be set");
     assert.ok(pricing.extraSite > 0, "PKR pricing should be set");
+    assert.notEqual(pricing.firstSite, 900); // Different from USD
   });
 
   test("All regions have pricing for all plans", () => {
-    const regions = ["usa", "canada", "europe", "pakistan"];
+    const regions = ["usa", "canada", "europe", "middle-east", "pakistan"];
     const plans = ["free", "starter", "custom", "domain", "pro"];
     
     regions.forEach(region => {
@@ -142,14 +158,19 @@ describe("Price Formatting", () => {
     assert.equal(formatPrice(2900, "usa"), "$29");
   });
 
-  test("CAD formatting", () => {
-    const formatted = formatPrice(1199, "canada");
-    assert.ok(formatted.includes("11") || formatted.includes("12"), "Should format CAD");
+  test("Canada uses USD formatting (for now)", () => {
+    assert.equal(formatPrice(900, "canada"), "$9");
+    assert.equal(formatPrice(1900, "canada"), "$19");
   });
 
-  test("EUR formatting", () => {
-    const formatted = formatPrice(899, "europe");
-    assert.ok(formatted.includes("8") || formatted.includes("9"), "Should format EUR");
+  test("Europe uses USD formatting (for now)", () => {
+    assert.equal(formatPrice(900, "europe"), "$9");
+    assert.equal(formatPrice(2900, "europe"), "$29");
+  });
+
+  test("Middle East uses USD formatting", () => {
+    assert.equal(formatPrice(900, "middle-east"), "$9");
+    assert.equal(formatPrice(1900, "middle-east"), "$19");
   });
 
   test("PKR formatting", () => {
@@ -161,6 +182,7 @@ describe("Price Formatting", () => {
     assert.equal(formatPrice(0, "usa"), "Free");
     assert.equal(formatPrice(0, "canada"), "Free");
     assert.equal(formatPrice(0, "europe"), "Free");
+    assert.equal(formatPrice(0, "middle-east"), "Free");
     assert.equal(formatPrice(0, "pakistan"), "Free");
   });
 
@@ -168,6 +190,7 @@ describe("Price Formatting", () => {
     assert.equal(formatPrice(null, "usa"), "Contact us");
     assert.equal(formatPrice(null, "canada"), "Contact us");
     assert.equal(formatPrice(null, "europe"), "Contact us");
+    assert.equal(formatPrice(null, "middle-east"), "Contact us");
     assert.equal(formatPrice(null, "pakistan"), "Contact us");
   });
 });
@@ -196,6 +219,20 @@ describe("Country to Region Mapping", () => {
     assert.equal(getRegionFromCountry("PL"), "europe"); // Poland
   });
 
+  test("Middle East countries map to Middle East", () => {
+    assert.equal(getRegionFromCountry("AE"), "middle-east"); // UAE
+    assert.equal(getRegionFromCountry("SA"), "middle-east"); // Saudi Arabia
+    assert.equal(getRegionFromCountry("QA"), "middle-east"); // Qatar
+    assert.equal(getRegionFromCountry("KW"), "middle-east"); // Kuwait
+    assert.equal(getRegionFromCountry("BH"), "middle-east"); // Bahrain
+    assert.equal(getRegionFromCountry("OM"), "middle-east"); // Oman
+    assert.equal(getRegionFromCountry("JO"), "middle-east"); // Jordan
+    assert.equal(getRegionFromCountry("LB"), "middle-east"); // Lebanon
+    assert.equal(getRegionFromCountry("TR"), "middle-east"); // Turkey
+    assert.equal(getRegionFromCountry("EG"), "middle-east"); // Egypt
+    assert.equal(getRegionFromCountry("IL"), "middle-east"); // Israel
+  });
+
   test("Unknown countries default to USA", () => {
     assert.equal(getRegionFromCountry("XX"), "usa");
     assert.equal(getRegionFromCountry(null), "usa");
@@ -217,36 +254,28 @@ describe("Pakistan Stripe Blocking", () => {
     assert.equal(isStripeSupported("pakistan"), false);
   });
 
-  test("Pakistan has no Stripe price env prefix", () => {
-    const pakistan = getRegion("pakistan");
-    assert.equal(pakistan.stripePriceEnvPrefix, null);
-  });
-
-  test("Other regions can use Stripe", () => {
+  test("All other regions can use Stripe", () => {
     assert.ok(isStripeSupported("usa"));
     assert.ok(isStripeSupported("canada"));
     assert.ok(isStripeSupported("europe"));
+    assert.ok(isStripeSupported("middle-east"));
   });
 });
 
 console.log("✅ All multi-region pricing tests passed!");
 console.log("Test Coverage:");
-console.log("  ✓ Region configuration (USA, Canada, Europe, Pakistan)");
+console.log("  ✓ Region configuration (USA, Canada, Europe, Middle East, Pakistan)");
 console.log("  ✓ Stripe support detection");
-console.log("  ✓ Per-region pricing for all plans");
-console.log("  ✓ Currency formatting (USD, CAD, EUR, PKR)");
-console.log("  ✓ Country-to-region mapping");
+console.log("  ✓ Per-region pricing (USD for all except Pakistan)");
+console.log("  ✓ Currency formatting (USD, PKR)");
+console.log("  ✓ Country-to-region mapping (60+ countries)");
 console.log("  ✓ Pakistan Stripe blocking");
 console.log("");
+console.log("Current Setup:");
+console.log("  • USA, Canada, Europe, Middle East: USD pricing with Stripe");
+console.log("  • Pakistan: PKR pricing, contact-based (no Stripe)");
+console.log("");
 console.log("⚠️  TODO items for production:");
-console.log("  - Set final CAD pricing (currently placeholder ~1.35x USD)");
-console.log("  - Set final EUR pricing (currently placeholder ~0.92x USD + VAT)");
 console.log("  - Set final PKR pricing (currently placeholder ~280x USD)");
-console.log("  - Create Stripe prices for CAD and EUR in Stripe dashboard");
-console.log("  - Set environment variables:");
-console.log("    STRIPE_PRICE_CAD_STARTER, STRIPE_PRICE_CAD_STARTER_EXTRA");
-console.log("    STRIPE_PRICE_CAD_CUSTOM, STRIPE_PRICE_CAD_CUSTOM_EXTRA");
-console.log("    STRIPE_PRICE_CAD_DOMAIN, STRIPE_PRICE_CAD_DOMAIN_EXTRA");
-console.log("    STRIPE_PRICE_EUR_STARTER, STRIPE_PRICE_EUR_STARTER_EXTRA");
-console.log("    STRIPE_PRICE_EUR_CUSTOM, STRIPE_PRICE_EUR_CUSTOM_EXTRA");
-console.log("    STRIPE_PRICE_EUR_DOMAIN, STRIPE_PRICE_EUR_DOMAIN_EXTRA");
+console.log("  - No additional Stripe prices needed (all use existing USD prices)");
+console.log("  - Future: Add CAD/EUR/AED currencies when needed");

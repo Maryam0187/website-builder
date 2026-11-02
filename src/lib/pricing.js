@@ -1,9 +1,10 @@
 /**
  * Multi-region pricing configuration
  * 
- * Each region has its own currency and pricing for all plans.
- * Stripe is supported in USA, Canada, and Europe.
- * Pakistan uses local payment methods (contact-based for now).
+ * For now: USA, Canada, Europe, and Middle East all use USD pricing with Stripe.
+ * Pakistan: PKR display, contact-based (no Stripe).
+ * 
+ * Structure supports future per-region currencies (CAD, EUR, AED, etc.) when needed.
  */
 
 export const REGIONS = {
@@ -14,25 +15,30 @@ export const REGIONS = {
     symbol: "$",
     locale: "en-US",
     paymentProvider: "stripe",
-    stripePriceEnvPrefix: "STRIPE_PRICE_USD", // e.g. STRIPE_PRICE_USD_STARTER
   },
   CANADA: {
     id: "canada",
     name: "Canada",
-    currency: "CAD",
-    symbol: "CA$",
-    locale: "en-CA",
+    currency: "USD", // Using USD for now, can switch to CAD later
+    symbol: "$",
+    locale: "en-US",
     paymentProvider: "stripe",
-    stripePriceEnvPrefix: "STRIPE_PRICE_CAD",
   },
   EUROPE: {
     id: "europe",
     name: "Europe",
-    currency: "EUR",
-    symbol: "€",
-    locale: "en-GB",
+    currency: "USD", // Using USD for now, can switch to EUR later
+    symbol: "$",
+    locale: "en-US",
     paymentProvider: "stripe",
-    stripePriceEnvPrefix: "STRIPE_PRICE_EUR",
+  },
+  MIDDLE_EAST: {
+    id: "middle-east",
+    name: "Middle East",
+    currency: "USD", // Using USD for now, can switch to AED/SAR later
+    symbol: "$",
+    locale: "en-US",
+    paymentProvider: "stripe",
   },
   PAKISTAN: {
     id: "pakistan",
@@ -41,100 +47,51 @@ export const REGIONS = {
     symbol: "Rs",
     locale: "en-PK",
     paymentProvider: "contact", // No Stripe, contact-based payment
-    stripePriceEnvPrefix: null,
   },
 };
 
 /**
  * Pricing per region per plan (in cents/smallest currency unit)
  * 
- * USD prices are the source of truth.
- * CAD, EUR, PKR prices are marked TODO for the owner to set based on:
- * - Exchange rates
- * - Local market conditions
- * - Payment processing costs
- * - Tax considerations
+ * USA/Canada/Europe/Middle East: All use same USD pricing
+ * Pakistan: PKR pricing (approximate conversions, adjust as needed)
  */
+
+// USD pricing (used by USA, Canada, Europe, Middle East)
+const USD_PRICING = {
+  free: {
+    firstSite: 0,
+    extraSite: 500, // $5
+  },
+  starter: {
+    firstSite: 900, // $9
+    extraSite: 700, // $7
+  },
+  custom: {
+    firstSite: 1900, // $19
+    extraSite: 1500, // $15
+  },
+  domain: {
+    firstSite: 2900, // $29
+    extraSite: 2400, // $24
+  },
+  pro: {
+    firstSite: null, // Contact only
+    extraSite: null,
+  },
+};
+
 export const PRICING = {
-  usa: {
-    free: {
-      firstSite: 0,
-      extraSite: 500, // $5
-    },
-    starter: {
-      firstSite: 900, // $9
-      extraSite: 700, // $7
-    },
-    custom: {
-      firstSite: 1900, // $19
-      extraSite: 1500, // $15
-    },
-    domain: {
-      firstSite: 2900, // $29
-      extraSite: 2400, // $24
-    },
-    pro: {
-      firstSite: null, // Contact only
-      extraSite: null,
-    },
-  },
-  
-  canada: {
-    // TODO: Set CAD prices based on exchange rate + market
-    // Current USD to CAD: ~1.35x (as of Nov 2024)
-    // Suggested: round to friendly numbers
-    free: {
-      firstSite: 0,
-      extraSite: 699, // ~$6.99 CAD (TODO: adjust)
-    },
-    starter: {
-      firstSite: 1199, // ~$11.99 CAD (TODO: adjust)
-      extraSite: 949, // ~$9.49 CAD (TODO: adjust)
-    },
-    custom: {
-      firstSite: 2549, // ~$25.49 CAD (TODO: adjust)
-      extraSite: 1999, // ~$19.99 CAD (TODO: adjust)
-    },
-    domain: {
-      firstSite: 3899, // ~$38.99 CAD (TODO: adjust)
-      extraSite: 3199, // ~$31.99 CAD (TODO: adjust)
-    },
-    pro: {
-      firstSite: null,
-      extraSite: null,
-    },
-  },
-  
-  europe: {
-    // TODO: Set EUR prices based on exchange rate + VAT
-    // Current USD to EUR: ~0.92x (as of Nov 2024)
-    // Note: VAT varies by country (15-27%), consider inclusive pricing
-    free: {
-      firstSite: 0,
-      extraSite: 499, // ~€4.99 (TODO: adjust for VAT)
-    },
-    starter: {
-      firstSite: 899, // ~€8.99 (TODO: adjust for VAT)
-      extraSite: 699, // ~€6.99 (TODO: adjust for VAT)
-    },
-    custom: {
-      firstSite: 1899, // ~€18.99 (TODO: adjust for VAT)
-      extraSite: 1499, // ~€14.99 (TODO: adjust for VAT)
-    },
-    domain: {
-      firstSite: 2899, // ~€28.99 (TODO: adjust for VAT)
-      extraSite: 2399, // ~€23.99 (TODO: adjust for VAT)
-    },
-    pro: {
-      firstSite: null,
-      extraSite: null,
-    },
-  },
+  usa: USD_PRICING,
+  canada: USD_PRICING, // Same as USD for now
+  europe: USD_PRICING, // Same as USD for now
+  "middle-east": USD_PRICING, // Same as USD for now
   
   pakistan: {
-    // TODO: Set PKR prices based on exchange rate + local market
-    // Current USD to PKR: ~280x (as of Nov 2024)
-    // Note: Local payment gateways may have higher fees
+    // TODO: Set final PKR pricing based on:
+    // - Current exchange rate (~280 PKR = 1 USD as of Nov 2024)
+    // - Local market conditions
+    // - Payment processing costs
     free: {
       firstSite: 0,
       extraSite: 140000, // ~Rs 1,400 (TODO: adjust)
@@ -203,6 +160,23 @@ export const COUNTRY_TO_REGION = {
   CH: "europe", // Switzerland
   GB: "europe", // United Kingdom
   
+  // Middle East
+  AE: "middle-east", // United Arab Emirates
+  SA: "middle-east", // Saudi Arabia
+  QA: "middle-east", // Qatar
+  KW: "middle-east", // Kuwait
+  BH: "middle-east", // Bahrain
+  OM: "middle-east", // Oman
+  JO: "middle-east", // Jordan
+  LB: "middle-east", // Lebanon
+  IQ: "middle-east", // Iraq
+  YE: "middle-east", // Yemen
+  SY: "middle-east", // Syria
+  IL: "middle-east", // Israel
+  PS: "middle-east", // Palestine
+  TR: "middle-east", // Turkey
+  EG: "middle-east", // Egypt
+  
   // Pakistan
   PK: "pakistan",
 };
@@ -226,6 +200,8 @@ export function getRegion(regionId) {
       return REGIONS.CANADA;
     case "europe":
       return REGIONS.EUROPE;
+    case "middle-east":
+      return REGIONS.MIDDLE_EAST;
     case "pakistan":
       return REGIONS.PAKISTAN;
     default:
@@ -312,24 +288,23 @@ export function detectRegionFromHeaders(headers) {
 
 /**
  * Get Stripe price ID for a region and plan
- * Price IDs come from environment variables
  * 
- * Expected env var format:
- * - STRIPE_PRICE_USD_STARTER=price_xxx
- * - STRIPE_PRICE_USD_STARTER_EXTRA=price_xxx
- * - STRIPE_PRICE_CAD_CUSTOM=price_xxx
- * - etc.
+ * For now: USA, Canada, Europe, Middle East all use the same USD Stripe prices.
+ * Price IDs can come from the existing plan configuration or environment variables.
+ * 
+ * Future: When CAD/EUR/AED pricing is added, this will look up per-currency price IDs
+ * from environment variables like:
+ * - STRIPE_PRICE_CAD_STARTER, STRIPE_PRICE_CAD_STARTER_EXTRA
+ * - STRIPE_PRICE_EUR_CUSTOM, STRIPE_PRICE_EUR_CUSTOM_EXTRA
  */
 export function getStripePriceId(regionId, planId, isExtraSite = false) {
   const region = getRegion(regionId);
   
-  if (!region.stripePriceEnvPrefix) {
-    return null; // No Stripe support for this region
+  if (!isStripeSupported(regionId)) {
+    return null; // No Stripe support for this region (e.g. Pakistan)
   }
   
-  const plan = String(planId).toUpperCase();
-  const suffix = isExtraSite ? "_EXTRA" : "";
-  const envVar = `${region.stripePriceEnvPrefix}_${plan}${suffix}`;
-  
-  return process.env[envVar] || null;
+  // For now, all Stripe regions use USD prices
+  // Return null so billing logic uses existing plan.stripePriceId or creates with price_data
+  return null;
 }
