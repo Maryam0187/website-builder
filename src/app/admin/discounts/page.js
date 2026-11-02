@@ -176,7 +176,7 @@ export default function AdminDiscountsPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Discount Management</h1>
             <p className="mt-2 text-gray-600">
-              Manage founding customer offers, coupon codes, and promotions
+              Manage launch promotions (time-based, auto-applied) and coupon codes
             </p>
           </div>
           <button
@@ -204,9 +204,14 @@ export default function AdminDiscountsPage() {
                   disabled={editingId}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 >
-                  <option value="founding">Founding Offer</option>
-                  <option value="coupon">Coupon Code</option>
+                  <option value="promotion">Launch Promotion (auto-applied, time-based)</option>
+                  <option value="coupon">Coupon Code (customer enters)</option>
                 </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  {formData.type === 'promotion' 
+                    ? 'Automatically applied to all new subscriptions while active' 
+                    : 'Customer must enter code at checkout'}
+                </p>
               </div>
 
               {formData.type === 'coupon' && (
@@ -298,28 +303,39 @@ export default function AdminDiscountsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max Redemptions (optional)
+                  Max Redemptions {formData.type === 'promotion' ? '(optional - blank for unlimited)' : '(optional)'}
                 </label>
                 <input
                   type="number"
                   value={formData.maxRedemptions || ''}
                   onChange={(e) => setFormData({ ...formData, maxRedemptions: e.target.value ? parseInt(e.target.value) : null })}
-                  placeholder="Unlimited"
+                  placeholder={formData.type === 'promotion' ? 'Unlimited' : 'Unlimited'}
                   min="1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
+                {formData.type === 'promotion' && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Show spots counter only if set; otherwise show time countdown
+                  </p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Expiry Date (optional)
+                  {formData.type === 'promotion' ? 'Active Until (required for promotions)' : 'Expiry Date (optional)'}
                 </label>
                 <input
-                  type="date"
-                  value={formData.expiryDate || ''}
+                  type="datetime-local"
+                  value={formData.expiryDate ? formData.expiryDate.slice(0, 16) : ''}
                   onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value || null })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  required={formData.type === 'promotion'}
                 />
+                {formData.type === 'promotion' && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Promotion stops auto-applying after this date/time
+                  </p>
+                )}
               </div>
 
               {!editingId && (
@@ -376,14 +392,19 @@ export default function AdminDiscountsPage() {
                 <tr key={discount.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      discount.type === 'founding' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                      discount.type === 'promotion' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {discount.type}
+                      {discount.type === 'promotion' ? 'Launch Promo' : 'Coupon'}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm">
                     {discount.code && <div className="font-mono font-bold">{discount.code}</div>}
                     <div className="text-gray-600">{discount.name}</div>
+                    {discount.expiry_date && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Expires: {new Date(discount.expiry_date).toLocaleString()}
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {discount.value_type === 'percent' 
@@ -397,7 +418,7 @@ export default function AdminDiscountsPage() {
                     {discount.duration_type === 'forever' && 'Forever'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {discount.used_count} {discount.max_redemptions ? `/ ${discount.max_redemptions}` : ''}
+                    {discount.used_count} {discount.max_redemptions ? `/ ${discount.max_redemptions}` : '(unlimited)'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button

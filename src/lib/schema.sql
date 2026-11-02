@@ -302,10 +302,10 @@ CREATE TABLE IF NOT EXISTS conversation_versions (
 CREATE INDEX IF NOT EXISTS idx_conversation_versions_conversation ON conversation_versions(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_versions_created_at ON conversation_versions(conversation_id, created_at DESC);
 
--- Discount system: founding offers, coupons, annual billing
+-- Discount system: launch promotions, coupons, annual billing
 CREATE TABLE IF NOT EXISTS discounts (
   id BIGSERIAL PRIMARY KEY,
-  type TEXT NOT NULL CHECK (type IN ('founding', 'coupon')),
+  type TEXT NOT NULL CHECK (type IN ('promotion', 'coupon')),
   code TEXT NULL UNIQUE,
   name TEXT NOT NULL,
   value_type TEXT NOT NULL CHECK (value_type IN ('percent', 'fixed')),

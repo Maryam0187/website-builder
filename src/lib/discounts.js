@@ -1,15 +1,17 @@
 import { query } from "./db";
 
 /**
- * Get founding offer discount (if active and spots available)
+ * Get active launch promotion (if active, not expired, and spots available)
+ * Launch promotions are time-based with optional redemption caps
  */
-export async function getFoundingOffer() {
+export async function getLaunchPromotion() {
   const result = await query(`
     SELECT * FROM discounts 
-    WHERE type = 'founding' 
+    WHERE type = 'promotion' 
       AND active = true 
-      AND (max_redemptions IS NULL OR used_count < max_redemptions)
       AND (expiry_date IS NULL OR expiry_date > CURRENT_TIMESTAMP)
+      AND (max_redemptions IS NULL OR used_count < max_redemptions)
+    ORDER BY created_at DESC
     LIMIT 1
   `);
   
@@ -69,18 +71,18 @@ export function calculateDiscountAmount(discount, originalAmount) {
 }
 
 /**
- * Choose best discount (founding vs coupon)
+ * Choose best discount (promotion vs coupon)
  * Returns the discount that gives the largest savings
  */
-export function chooseBestDiscount(foundingOffer, coupon, amount) {
-  if (!foundingOffer && !coupon) return null;
-  if (!foundingOffer) return coupon;
-  if (!coupon) return foundingOffer;
+export function chooseBestDiscount(promotion, coupon, amount) {
+  if (!promotion && !coupon) return null;
+  if (!promotion) return coupon;
+  if (!coupon) return promotion;
   
-  const foundingSavings = calculateDiscountAmount(foundingOffer, amount);
+  const promotionSavings = calculateDiscountAmount(promotion, amount);
   const couponSavings = calculateDiscountAmount(coupon, amount);
   
-  return foundingSavings >= couponSavings ? foundingOffer : coupon;
+  return promotionSavings >= couponSavings ? promotion : coupon;
 }
 
 /**
@@ -113,8 +115,8 @@ export async function redeemDiscount(discountId, userId, subscriptionId = null) 
       return { success: false, error: 'Discount limit reached' };
     }
     
-    // Check if user already redeemed (for founding offer)
-    if (discount.type === 'founding') {
+    // Check if user already redeemed (for promotions)
+    if (discount.type === 'promotion') {
       const existingResult = await client.query(`
         SELECT id FROM discount_redemptions 
         WHERE discount_id = $1 AND user_id = $2

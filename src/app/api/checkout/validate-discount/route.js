@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import {
-  getFoundingOffer,
+  getLaunchPromotion,
   getCouponByCode,
   validateDiscountApplicability,
   calculateDiscountAmount,
@@ -38,8 +38,8 @@ export async function POST(request) {
 
     const originalAmount = pricing.firstSite;
 
-    // Get founding offer (always check, auto-applies if available)
-    const foundingOffer = await getFoundingOffer();
+    // Get launch promotion (always check, auto-applies if available)
+    const promotion = await getLaunchPromotion();
     
     // Get coupon if code provided
     let coupon = null;
@@ -62,20 +62,20 @@ export async function POST(request) {
       }
     }
 
-    // Validate founding offer applicability
-    let applicableFoundingOffer = null;
-    if (foundingOffer && validateDiscountApplicability(foundingOffer, planId, billingInterval)) {
-      applicableFoundingOffer = foundingOffer;
+    // Validate promotion applicability
+    let applicablePromotion = null;
+    if (promotion && validateDiscountApplicability(promotion, planId, billingInterval)) {
+      applicablePromotion = promotion;
     }
 
-    // Choose best discount (founding vs coupon, don't stack)
-    const bestDiscount = chooseBestDiscount(applicableFoundingOffer, coupon, originalAmount);
+    // Choose best discount (promotion vs coupon, don't stack)
+    const bestDiscount = chooseBestDiscount(applicablePromotion, coupon, originalAmount);
 
     if (!bestDiscount && code) {
       return NextResponse.json({
         valid: true,
         discount: null,
-        message: "Founding offer gives better savings",
+        message: "Launch promotion gives better savings",
       });
     }
 

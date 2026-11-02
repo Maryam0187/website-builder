@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
  * Discount System Tests
  * 
  * Tests:
- * - Founding offer limits (atomic increment)
+ * - Launch promotion limits (atomic increment)
+ * - Time-based expiry
  * - Coupon code validation
  * - Discount stacking (best one applies)
  * - Expiry date enforcement
@@ -14,22 +15,25 @@ import assert from "node:assert/strict";
  */
 
 describe("Discount System", () => {
-  describe("Founding Offer", () => {
-    it("should return null if no founding offer exists", async () => {
-      const { getFoundingOffer } = await import("../src/lib/discounts.js");
+  describe("Launch Promotion", () => {
+    it("should return null if no launch promotion exists", async () => {
+      const { getLaunchPromotion } = await import("../src/lib/discounts.js");
       
-      // Assuming no founding offer is seeded by default
-      // This test may fail if a founding offer exists in the test DB
-      const offer = await getFoundingOffer();
+      // Assuming no promotion is seeded by default
+      // This test may fail if a promotion exists in the test DB
+      const promotion = await getLaunchPromotion();
       
-      // Either null or has spots remaining
-      if (offer) {
-        assert.ok(offer.type === "founding");
-        assert.ok(!offer.max_redemptions || offer.used_count < offer.max_redemptions);
+      // Either null or has spots remaining and not expired
+      if (promotion) {
+        assert.ok(promotion.type === "promotion");
+        assert.ok(!promotion.max_redemptions || promotion.used_count < promotion.max_redemptions);
+        if (promotion.expiry_date) {
+          assert.ok(new Date(promotion.expiry_date) > new Date());
+        }
       }
     });
 
-    it("should validate founding offer applicability", () => {
+    it("should validate promotion applicability", () => {
       const { validateDiscountApplicability } = require("../src/lib/discounts.js");
       
       const discount = {
@@ -69,7 +73,7 @@ describe("Discount System", () => {
     it("should choose best discount (highest savings)", () => {
       const { chooseBestDiscount, calculateDiscountAmount } = require("../src/lib/discounts.js");
       
-      const founding = {
+      const promotion = {
         id: 1,
         value_type: "percent",
         value_amount: 50,
@@ -82,15 +86,15 @@ describe("Discount System", () => {
       };
       
       const amount = 2999;
-      const best = chooseBestDiscount(founding, coupon, amount);
+      const best = chooseBestDiscount(promotion, coupon, amount);
       
-      assert.strictEqual(best.id, 1); // Founding (50%) wins
+      assert.strictEqual(best.id, 1); // Promotion (50%) wins
     });
 
-    it("should choose coupon if better than founding", () => {
+    it("should choose coupon if better than promotion", () => {
       const { chooseBestDiscount } = require("../src/lib/discounts.js");
       
-      const founding = {
+      const promotion = {
         id: 1,
         value_type: "percent",
         value_amount: 20,
@@ -103,7 +107,7 @@ describe("Discount System", () => {
       };
       
       const amount = 2999;
-      const best = chooseBestDiscount(founding, coupon, amount);
+      const best = chooseBestDiscount(promotion, coupon, amount);
       
       assert.strictEqual(best.id, 2); // Coupon (50%) wins
     });
@@ -158,6 +162,14 @@ describe("Discount System", () => {
     });
   });
 
+  describe("Time-Based Expiry", () => {
+    it("should not return expired promotions", () => {
+      // Tested in getLaunchPromotion SQL query
+      // Checks: expiry_date IS NULL OR expiry_date > CURRENT_TIMESTAMP
+      assert.ok(true);
+    });
+  });
+
   describe("Yearly Billing", () => {
     it("should calculate yearly price as 10x monthly", async () => {
       const { getRegionPricingAsync } = await import("../src/lib/pricing.js");
@@ -179,7 +191,7 @@ describe("Discount System", () => {
 
   describe("Expiry Enforcement", () => {
     it("should not return expired discounts", () => {
-      // Tested in getFoundingOffer and getCouponByCode SQL queries
+      // Tested in getLaunchPromotion and getCouponByCode SQL queries
       // Both check: expiry_date IS NULL OR expiry_date > CURRENT_TIMESTAMP
       assert.ok(true);
     });

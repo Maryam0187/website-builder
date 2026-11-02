@@ -2,52 +2,68 @@
 
 ## Overview
 
-The discount system integrates with Stripe Coupons and Promotion Codes to apply discounts at checkout and during subscription creation.
+The discount system integrates with Stripe Coupons and Promotion Codes to apply discounts at checkout and during subscription creation. It supports two types of discounts:
 
-## Automatic Stripe Coupon Creation
+1. **Launch Promotions** - Time-based, auto-applied discounts with optional redemption caps
+2. **Coupon Codes** - Customer-entered codes with flexible rules
 
-When creating a discount in the admin panel, you can optionally create a Stripe Coupon automatically. This is handled by the system when you check "Create Stripe coupon automatically" during discount creation.
+## Launch Promotions vs Coupon Codes
 
-### What Gets Created
+### Launch Promotions
+- **Auto-applied** at checkout while active
+- **Time-based** with "active until" date
+- **No code required** from customer
+- Optional redemption cap (unlimited by default)
+- Shows countdown timer on pricing page
+- Perfect for: launch offers, seasonal sales, limited-time promotions
 
-1. **Stripe Coupon**: The core discount object with amount/percentage and duration
-2. **Stripe Promotion Code** (for coupon codes): A customer-facing code that references the coupon
+### Coupon Codes
+- **Customer enters code** at checkout
+- Can have expiry date or be ongoing
+- Required: unique code (e.g., SAVE20)
+- Optional redemption cap
+- Perfect for: partnerships, referrals, targeted campaigns
 
-The system stores the Stripe Coupon ID and Promotion Code ID in the database for reference.
+## Creating a Launch Promotion
 
-## Manual Stripe Setup
+### Via Admin UI (Recommended)
 
-If you prefer to create Stripe coupons manually or the automatic creation fails, follow these steps:
+1. Log into admin panel
+2. Visit `/admin/discounts`
+3. Click "Create Discount"
+4. Select **Type: Launch Promotion**
+5. Configure:
+   - **Name**: "Launch Week Sale" (internal)
+   - **Discount**: 50% (or fixed amount in cents)
+   - **Duration**: 3 months (how many billing cycles discount lasts)
+   - **Active Until**: 2026-12-31 23:59 (promotion stops auto-applying after this date/time)
+   - **Max Redemptions**: Leave blank for unlimited, or set cap (e.g., 100)
+6. Check "Create Stripe coupon automatically" (recommended)
+7. Save
 
-### Creating a Coupon in Stripe Dashboard
+**Result:**
+- Promotion auto-applies to all new subscriptions until end date
+- Pricing page shows "Offer ends in X days"
+- If max redemptions set, also shows "Y spots remaining"
 
-1. Log into [Stripe Dashboard](https://dashboard.stripe.com)
-2. Navigate to **Products → Coupons**
-3. Click **Create coupon**
+### Example: Black Friday Sale
 
-#### Coupon Configuration
-
-**For Founding Offer (50% off for 3 months):**
 ```
-Name: Founding Customer Offer
-Discount: 50% off
-Duration: Repeating (3 months)
-Max Redemptions: 100 (or your limit)
-Currency: USD
+Type: Launch Promotion
+Name: Black Friday Sale
+Discount: 40% off
+Duration: 1 month
+Active Until: 2026-11-30 23:59:59
+Max Redemptions: (blank = unlimited)
 ```
 
-**For General Coupon Code (e.g., SAVE20):**
-```
-Name: Save 20%
-Discount: 20% off
-Duration: Once / Repeating / Forever (as desired)
-Max Redemptions: Optional
-Currency: USD
-```
+**Customer sees:**
+- "40% off your first month - offer ends in 3 days"
+- Discount automatically applied at checkout
 
-### Creating a Promotion Code
+---
 
-After creating a coupon:
+## Creating Coupon Codes
 
 1. Click **Create promotion code** on the coupon detail page
 2. Enter the customer-facing code (e.g., `SAVE20`, `LAUNCH50`)
@@ -72,17 +88,27 @@ WHERE id = <your_discount_id>;
 
 ## Applying Discounts at Checkout
 
-### Automatic Application (Founding Offer)
+### Automatic Application (Launch Promotions)
 
-Founding offers are automatically checked during checkout validation. If available and applicable, they are applied without customer input.
+Launch promotions are automatically checked during checkout validation. If a promotion is active (before expiry date) and has spots remaining, it's applied without customer input.
 
 ```javascript
 // Checkout flow automatically checks:
-const foundingOffer = await getFoundingOffer();
-if (foundingOffer && validateApplicability(foundingOffer, planId)) {
-  applyDiscount(foundingOffer);
+const promotion = await getLaunchPromotion();
+if (promotion && validateApplicability(promotion, planId)) {
+  applyDiscount(promotion);
 }
 ```
+
+**Time-Based Auto-Expiry:**
+- Promotion stops applying automatically after "active until" date
+- No manual intervention needed
+- Admin can also disable manually if needed
+
+**Redemption Tracking:**
+- Each redemption atomically increments counter
+- Can't exceed max_redemptions even under concurrent requests
+- Shows real-time countdown/counter on pricing page
 
 ### Customer-Entered Coupon Codes
 
@@ -126,6 +152,29 @@ All discount testing should be done in Stripe Test Mode first.
 1. Use Stripe Test API keys
 2. Create test coupons
 3. Test redemption flow with test card `4242 4242 4242 4242`
+
+### Testing Launch Promotions
+
+1. Create a promotion with near-future expiry (e.g., 1 hour from now)
+2. Visit pricing page - verify countdown displays
+3. Start checkout - verify discount auto-applies
+4. Wait for expiry - verify promotion stops applying
+5. Check redemption count in admin panel
+
+### Testing Time-Based Expiry
+
+```sql
+-- Manually set expiry to past for testing
+UPDATE discounts 
+SET expiry_date = NOW() - INTERVAL '1 hour'
+WHERE type = 'promotion';
+
+-- Verify API returns no promotion
+-- Then reset expiry for production
+UPDATE discounts 
+SET expiry_date = '2026-12-31 23:59:59'
+WHERE type = 'promotion';
+```
 
 ### Verifying Discount Application
 
@@ -186,42 +235,82 @@ This ensures the discount only applies to yearly subscriptions.
 
 ## Common Issues and Solutions
 
-### Issue: Coupon Not Applying
+### Issue: Promotion Not Auto-Applying
 
 **Check:**
-- Is the coupon active in Stripe?
-- Has max redemptions been reached?
-- Is expiry date passed?
-- Does the coupon currency match the subscription currency?
+- Is the promotion active in admin panel?
+- Has the "active until" date passed?
+- Has max redemptions been reached (if set)?
+- Does the promotion apply to the selected plan?
+- Is the promotion's billing_interval restriction matching?
+
+**Debug:**
+```bash
+# Check promotion status
+curl https://your-app.com/api/pricing/launch-promotion
+
+# Response should include:
+# - available: true/false
+# - countdown: { daysRemaining, hoursRemaining }
+# - spotsRemaining: number (if max_redemptions set)
+```
 
 ### Issue: Stacking Discounts
 
 **Expected Behavior:** Discounts do NOT stack. The system automatically chooses the best discount (highest savings) and applies only that one.
 
-**Why:** This prevents abuse and keeps pricing logic simple.
+**Priority Order:**
+1. Compare launch promotion vs entered coupon code
+2. Calculate savings for each
+3. Apply whichever gives higher discount
+4. If tied, promotion wins (auto-applied first)
 
-### Issue: Founding Offer Limit Exceeded
+**Why:** This prevents abuse and keeps pricing logic simple while maximizing customer savings.
 
-**Atomic Increment:** The system uses database row locking (`FOR UPDATE`) to ensure the founding offer limit cannot be exceeded, even under concurrent requests.
+### Issue: Promotion Limit Exceeded
 
-**If limit reached:** New checkouts will not see the founding offer, even if someone abandons their checkout.
+**Atomic Increment:** The system uses database row locking (`FOR UPDATE`) to ensure the promotion limit cannot be exceeded, even under concurrent requests.
+
+**If limit reached:** 
+- New checkouts will not see the promotion
+- Countdown changes to "All spots claimed!"
+- Admin can increase limit or create new promotion
 
 ## Monitoring
 
-### Discount Usage
+### Promotion Performance
 
-Query discount redemptions:
+Track promotion effectiveness in admin panel:
+- View redemption count
+- Monitor time-to-expiry
+- Check spots remaining
+- See which plans redeemed most
+
+### Query Discount Usage
 
 ```sql
+-- Active promotions with stats
 SELECT 
   d.name,
-  d.code,
+  d.value_amount,
+  d.duration_months,
+  d.expiry_date,
   d.used_count,
   d.max_redemptions,
-  COUNT(dr.id) as actual_redemptions
+  (d.max_redemptions - d.used_count) as spots_remaining
+FROM discounts d
+WHERE d.type = 'promotion' 
+  AND d.active = true
+  AND (d.expiry_date IS NULL OR d.expiry_date > NOW());
+
+-- Redemption velocity (last 24 hours)
+SELECT 
+  d.name,
+  COUNT(dr.id) as redemptions_24h
 FROM discounts d
 LEFT JOIN discount_redemptions dr ON d.id = dr.discount_id
-GROUP BY d.id;
+WHERE dr.redeemed_at > NOW() - INTERVAL '24 hours'
+GROUP BY d.id, d.name;
 ```
 
 ### Stripe Dashboard
