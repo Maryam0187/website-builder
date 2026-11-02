@@ -178,12 +178,12 @@ export const PLANS = {
   pro: {
     id: "pro",
     name: "Pro + PWA",
-    priceCents: 3900,
-    priceLabel: "$39/month",
-    additionalPriceCents: 3400,
-    additionalPriceLabel: "$34/month",
+    priceCents: null, // Not sold via Stripe - contact only
+    priceLabel: "Contact us",
+    additionalPriceCents: null,
+    additionalPriceLabel: "Contact us",
     description:
-      "Custom domain plus installable PWA. Additional websites $34/month each.",
+      "Custom domain plus installable PWA. Contact us to discuss your needs.",
     features: {
       live: true,
       hosting: true,
@@ -197,9 +197,10 @@ export const PLANS = {
     highlights: [
       "Everything in Domain",
       "Installable PWA",
-      "$39 first site · $34 each additional",
       "Priority support",
+      "Contact us for pricing",
     ],
+    contactOnly: true, // Flag to indicate this plan requires contact
   },
 };
 
@@ -222,6 +223,15 @@ export function normalizePlanId(planId) {
   const id = String(planId || "").toLowerCase().trim();
   if (id === "live") return "custom";
   return id;
+}
+
+/** Check if a plan can be purchased via Stripe */
+export function isPlanPurchasable(planId) {
+  const id = normalizePlanId(planId);
+  const plan = PLANS[id];
+  if (!plan) return false;
+  if (plan.contactOnly) return false;
+  return plan.priceCents != null;
 }
 
 export function planRank(planId) {
@@ -1006,6 +1016,12 @@ export async function subscribeManual(userId, planId = DEFAULT_PLAN_ID) {
   if (user.role !== "owner") throw new Error("Only site owners can subscribe");
 
   const plan = getPlan(planId);
+  
+  // Block Pro plan from being purchased via Stripe
+  if (!isPlanPurchasable(planId)) {
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us at hello@technonaire.com`);
+  }
+
   const invoice = await createInvoice(userId, {
     planId: plan.id,
     note: `${plan.name} — $${(plan.priceCents / 100).toFixed(0)}/mo USD. Pay with Stripe Checkout.`,
@@ -1170,6 +1186,12 @@ export async function upgradeStripeSubscription(userId, planId) {
   const user = await getUserById(userId);
   if (!user) throw new Error("User not found");
   if (user.role !== "owner") throw new Error("Only site owners can subscribe");
+
+  // Block Pro plan from being purchased via Stripe
+  if (!isPlanPurchasable(planId)) {
+    const plan = getPlan(planId);
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us at hello@technonaire.com`);
+  }
 
   const sub = await getUsableStripeSubscription(user);
   if (!sub) {
@@ -1901,6 +1923,12 @@ export async function subscribeWithSavedCard(userId, planId = "starter") {
   if (user.role !== "owner") throw new Error("Only owners can subscribe");
 
   const plan = getPlan(planId);
+  
+  // Block Pro plan from being purchased via Stripe
+  if (!isPlanPurchasable(planId)) {
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us at hello@technonaire.com`);
+  }
+  
   if (plan.id === "free" || plan.priceCents <= 0) {
     throw new Error("Choose a paid package to subscribe");
   }
@@ -2013,6 +2041,12 @@ export async function buyExtraSiteSlotOnSite(userId, slotPlanId) {
   if (user.role !== "owner") throw new Error("Only owners can buy extra slots");
 
   const plan = slotPlanId ? getPlan(slotPlanId) : resolveActivePlan(user);
+  
+  // Block Pro plan from being purchased via Stripe
+  if (!isPlanPurchasable(plan.id)) {
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us at hello@technonaire.com`);
+  }
+  
   if (!plan.additionalPriceCents || plan.additionalPriceCents <= 0) {
     throw new Error("The selected plan does not have a valid additional site price.");
   }

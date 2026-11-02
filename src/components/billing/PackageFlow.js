@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import PlanChangeDialog from "@/components/billing/PlanChangeDialog";
 import AddPaymentMethodDialog from "@/components/billing/AddPaymentMethodDialog";
+import ProContactDialog from "@/components/billing/ProContactDialog";
 
 function formatMoney(cents) {
   return `$${((Number(cents) || 0) / 100).toFixed(0)}`;
@@ -120,6 +121,7 @@ export default function PackageFlow({
   const [showSlotPicker, setShowSlotPicker] = useState(false);
   const [planChangePrompt, setPlanChangePrompt] = useState(null);
   const [showAddPaymentDialog, setShowAddPaymentDialog] = useState(false);
+  const [showProContactDialog, setShowProContactDialog] = useState(false);
   const [pendingPurchase, setPendingPurchase] = useState(null);
   const subStatus = billing?.subscriptionStatus || "none";
   const paidActive = Boolean(billing?.subscriptionActive);
@@ -235,6 +237,23 @@ export default function PackageFlow({
                     />
                   );
                 }
+                
+                // Pro plan is contact-only
+                if (item.id === "pro" || item.contactOnly) {
+                  return (
+                    <AddonCard
+                      key={item.id}
+                      item={item}
+                      badge="Enterprise"
+                      current={false}
+                      actionLabel="Contact us"
+                      busy={busy}
+                      disabled={false}
+                      onAction={() => setShowProContactDialog(true)}
+                    />
+                  );
+                }
+                
                 const isCurrent = paidActive && currentPlanId === item.id;
                 const itemRank = planRankById[item.id] || 0;
                 const isUpgrade = paidActive && itemRank > currentRank;
@@ -393,7 +412,6 @@ export default function PackageFlow({
                         { id: "starter", name: "Starter",   price: "$7/mo",  hint: "Live · auto Technonaire address" },
                         { id: "custom",  name: "Custom",    price: "$15/mo", hint: "Live · chosen Technonaire address" },
                         { id: "domain",  name: "Domain",    price: "$24/mo", hint: "Live · use your own domain" },
-                        { id: "pro",     name: "Pro + PWA", price: "$34/mo", hint: "Live · domain + installable app" },
                       ].map((slot) => {
                         const isCurrent = currentPlanId === slot.id;
                         return (
@@ -652,6 +670,11 @@ export default function PackageFlow({
         onError={(err) => {
           console.error("Payment method error:", err);
         }}
+      />
+
+      <ProContactDialog
+        open={showProContactDialog}
+        onClose={() => setShowProContactDialog(false)}
       />
     </div>
   );

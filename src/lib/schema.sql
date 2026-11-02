@@ -198,3 +198,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_subdomain_unique
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+
+-- Pro plan contact requests table
+CREATE TABLE IF NOT EXISTS pro_contact_requests (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  name        TEXT NOT NULL,
+  email       TEXT NOT NULL,
+  message     TEXT NOT NULL,
+  website_count INT NOT NULL DEFAULT 1,
+  status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'converted', 'declined')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pro_contact_requests_user_id ON pro_contact_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_pro_contact_requests_email ON pro_contact_requests(email);
+CREATE INDEX IF NOT EXISTS idx_pro_contact_requests_status ON pro_contact_requests(status);
+
+-- Add grace period columns for payment failures
+ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_failed_at TIMESTAMPTZ NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS grace_period_ends_at TIMESTAMPTZ NULL;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS unpublished_at TIMESTAMPTZ NULL;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS unpublish_reason TEXT NULL;
