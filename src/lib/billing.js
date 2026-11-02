@@ -15,6 +15,8 @@ import {
   sitePublicUrl,
 } from "./store-actions";
 
+const SITE_HOST_ROOT = process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com";
+
 export const TRIAL_DAYS = 14;
 export const BILLING_PERIOD_DAYS = 30;
 export const BILLING_CURRENCY = "usd";
@@ -102,7 +104,7 @@ export const PLANS = {
     additionalPriceCents: 700,
     additionalPriceLabel: "$7/month",
     description:
-      "Publish on a random Technonaire address (*.technonaire.site). Hosting, SSL, templates, editor, publishing, and version history.",
+      `Publish on a random Technonaire address (*.${SITE_HOST_ROOT}). Hosting, SSL, templates, editor, publishing, and version history.`,
     features: {
       live: true,
       hosting: true,
@@ -114,7 +116,7 @@ export const PLANS = {
       versionHistory: true,
     },
     highlights: [
-      "random.technonaire.site",
+      `random.${SITE_HOST_ROOT}`,
       "Hosting + SSL",
       "Templates, editor, publishing",
       "Version history (5)",
@@ -690,7 +692,7 @@ export async function syncStripeLiveQuantity(userId) {
 
 /**
  * Mark a site live or draft. Requires a paid Starter / Custom / Domain / Pro plan.
- * Assigns a random *.technonaire.site subdomain on first go-live when plan uses random address.
+ * Assigns a random subdomain on first go-live when plan uses random address.
  * Syncs Stripe quantity to match live site count.
  */
 export async function setOwnerSiteLive(userId, siteId, live) {

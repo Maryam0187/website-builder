@@ -152,8 +152,9 @@ export function validateCustomDomain(domain) {
     };
   }
 
-  // Don't allow technonaire.site subdomains as custom domains
-  if (cleaned.endsWith(".technonaire.site")) {
+  // Don't allow SITE_HOST_ROOT subdomains as custom domains
+  const siteHostRoot = process.env.SITE_HOST_ROOT || process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com";
+  if (cleaned.endsWith(`.${siteHostRoot}`)) {
     return { 
       valid: false, 
       normalized: null, 
@@ -292,25 +293,27 @@ export async function setCustomDomainForSite(siteId, domain, userId) {
 /**
  * Get required DNS records for a custom domain.
  */
-export function getRequiredDnsRecords(domain, appHostname = "builder.technonaire.com") {
+export function getRequiredDnsRecords(domain) {
+  const cnameTarget = process.env.CLOUDFLARE_CNAME_TARGET || `customers.${process.env.SITE_HOST_ROOT || "technonairebuilder.com"}`;
+  
   const isApex = !domain.includes("www.") && domain.split(".").length === 2;
   
   if (isApex) {
-    // Apex domain - needs A record or ALIAS/ANAME
+    // Apex domain - needs CNAME with flattening or ALIAS/ANAME
     return [
       {
-        type: "A",
+        type: "CNAME",
         name: "@",
-        value: "Your hosting provider's IP",
+        value: cnameTarget,
         ttl: 3600,
-        description: "Point apex domain to hosting (ask your host for the IP)"
+        description: `Point apex domain to ${cnameTarget} (use CNAME flattening if your DNS provider supports it, otherwise use ALIAS or ANAME record)`
       },
       {
         type: "CNAME",
         name: "www",
-        value: domain,
+        value: cnameTarget,
         ttl: 3600,
-        description: "Redirect www to apex domain"
+        description: `Point www subdomain to ${cnameTarget}`
       }
     ];
   }
@@ -321,9 +324,9 @@ export function getRequiredDnsRecords(domain, appHostname = "builder.technonaire
     {
       type: "CNAME",
       name: subdomain,
-      value: appHostname,
+      value: cnameTarget,
       ttl: 3600,
-      description: `Point ${domain} to Technonaire hosting`
+      description: `Point ${domain} to ${cnameTarget}`
     }
   ];
 }

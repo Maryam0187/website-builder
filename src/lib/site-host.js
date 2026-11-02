@@ -1,4 +1,4 @@
-const DEFAULT_HOST_ROOT = "technonaire.site";
+const DEFAULT_HOST_ROOT = "technonairebuilder.com";
 
 export const RESERVED_SUBDOMAINS = new Set([
   "www",
@@ -20,6 +20,8 @@ export const RESERVED_SUBDOMAINS = new Set([
   "help",
   "status",
   "docs",
+  "fallback",
+  "customers",
 ]);
 
 export function siteHostRoot() {

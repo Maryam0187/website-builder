@@ -23,7 +23,7 @@ const domainValidationTests = [
   { domain: "https://mybusiness.com", shouldPass: true, normalized: "mybusiness.com" },
   { domain: "mybusiness.com/", shouldPass: true, normalized: "mybusiness.com" },
   { domain: "invalid", shouldPass: false, reason: "format" },
-  { domain: "test.technonaire.site", shouldPass: false, reason: "technonaire subdomain" },
+  { domain: "test.technonairebuilder.com", shouldPass: false, reason: "technonaire subdomain" },
 ];
 
 domainValidationTests.forEach(test => {
@@ -175,12 +175,12 @@ const routingTests = [
     type: "Custom domain"
   },
   {
-    hostname: "mybusiness.technonaire.site",
+    hostname: "mybusiness.technonairebuilder.com",
     expectedRoute: "/site/subdomain/mybusiness",
     type: "Technonaire subdomain"
   },
   {
-    hostname: "abc123.technonaire.site",
+    hostname: "abc123.technonairebuilder.com",
     expectedRoute: "/site/subdomain/abc123",
     type: "Random subdomain"
   },

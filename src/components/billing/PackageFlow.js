@@ -22,12 +22,14 @@ function formatDate(value) {
   }
 }
 
+const SITE_HOST_ROOT = process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com";
+
 function featureList(features) {
   const address =
     features?.technonaireAddress === "random"
       ? "Random Technonaire address"
       : features?.technonaireAddress === "chosen"
-        ? "Choose your .technonaire.site address"
+        ? `Choose your .${SITE_HOST_ROOT} address`
         : null;
   return [
     features?.live ? "Publishing" : null,

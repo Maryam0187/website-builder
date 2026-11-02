@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { subdomainFromHost, siteHostRoot } from "@/lib/site-host";
 
 function requestHostname(request) {
+  // Check X-Forwarded-Host first (for Cloudflare Worker proxy)
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  if (forwardedHost) {
+    return forwardedHost.split(":")[0].trim().toLowerCase();
+  }
   return (request.headers.get("host") || "").split(":")[0].trim().toLowerCase();
 }
 
@@ -9,6 +14,16 @@ function appHostnames() {
   const hosts = new Set(["localhost", "127.0.0.1"]);
   const appHostname = (process.env.APP_HOSTNAME || "").split(":")[0].trim().toLowerCase();
   if (appHostname) hosts.add(appHostname);
+  
+  // Add Railway default hostname
+  const railwayAppDomain = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL;
+  if (railwayAppDomain) {
+    try {
+      const host = railwayAppDomain.replace(/^https?:\/\//, "").split("/")[0].toLowerCase();
+      if (host) hosts.add(host);
+    } catch {}
+  }
+  
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   if (appUrl) {
     try {
@@ -23,11 +38,11 @@ function appHostnames() {
 
 /**
  * Rewrite customer hosts to in-app routes. Builder app host is unchanged.
- * - *.technonaire.site → /live/[subdomain]/...
+ * - *.SITE_HOST_ROOT → /live/[subdomain]/...
  * - custom domain → /site/custom-domain/[domain]/...
  */
 export function proxy(request) {
-  const host = request.headers.get("host") || "";
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
   const hostname = requestHostname(request);
   const pathname = request.nextUrl.pathname;
 

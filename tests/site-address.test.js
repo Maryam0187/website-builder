@@ -55,7 +55,7 @@ const domainTests = [
   { input: "example.com/", valid: true, normalized: "example.com" },
   { input: "invalid", valid: false },
   { input: "invalid..com", valid: false },
-  { input: "sub.technonaire.site", valid: false }, // Technonaire subdomain not allowed
+  { input: "sub.technonairebuilder.com", valid: false }, // Technonaire subdomain not allowed
   { input: "", valid: false },
   { input: "example", valid: false },
 ];

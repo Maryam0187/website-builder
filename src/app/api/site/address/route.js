@@ -164,8 +164,8 @@ export async function POST(request) {
           cfSslStatus: updated.cfSslStatus
         },
         message: action === "update-subdomain"
-          ? `Address updated to ${result.subdomain}.technonaire.site`
-          : `Claimed ${result.subdomain}.technonaire.site for your website`,
+          ? `Address updated to ${result.subdomain}.${process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com"}`
+          : `Claimed ${result.subdomain}.${process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com"} for your website`,
       });
     }
 

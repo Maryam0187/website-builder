@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 const inputClass =
   "w-full rounded-lg border border-white/15 bg-[#040b1a] px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/30 disabled:opacity-60";
 
+const SITE_HOST_ROOT = process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com";
+
 export default function SubdomainPicker({
   siteId,
   currentSubdomain,
@@ -138,7 +140,7 @@ export default function SubdomainPicker({
                 minLength={3}
                 maxLength={63}
               />
-              <span className="shrink-0 text-sm text-blue-200/70">.technonaire.site</span>
+              <span className="shrink-0 text-sm text-blue-200/70">.{SITE_HOST_ROOT}</span>
             </div>
           </div>
           {canCheck ? (
@@ -171,7 +173,7 @@ export default function SubdomainPicker({
             }`}
           >
             {availability.available
-              ? `✓ ${availability.normalized}.technonaire.site is available`
+              ? `✓ ${availability.normalized}.${SITE_HOST_ROOT} is available`
               : `✗ ${availability.reason || "Not available"}`}
           </p>
         </div>

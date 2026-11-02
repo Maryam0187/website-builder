@@ -1,0 +1,29 @@
+# Cloudflare Worker Configuration for Technonaire Website Builder
+# Deploy with: npx wrangler deploy
+
+name = "technonaire-website-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables
+# Set RAILWAY_ORIGIN to your Railway app domain
+[vars]
+RAILWAY_ORIGIN = "website-builder-production-0175.up.railway.app"
+
+# Custom domain routes
+# Add your custom domains here as they're created for customers
+# Pattern: domain.com/* and www.domain.com/*
+# 
+# Example:
+# routes = [
+#   { pattern = "mybusiness.com/*", custom_domain = true },
+#   { pattern = "www.mybusiness.com/*", custom_domain = true },
+# ]
+#
+# Or use the wildcard pattern for all domains:
+# routes = [
+#   { pattern = "*/*", custom_domain = true }
+# ]
+
+# For production, you can route all traffic through the worker
+# by setting up Custom Hostnames to point to this worker

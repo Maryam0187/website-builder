@@ -482,7 +482,7 @@ export default function EditPageClient() {
         liveUrlHint={
           liveUrl
             ? liveUrl.replace(/^https?:\/\//, "")
-            : "*.technonaire.site"
+            : null
         }
         busy={liveBusy}
         onCancel={() => setGoLiveOpen(false)}

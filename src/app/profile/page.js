@@ -326,7 +326,7 @@ export default function ProfilePage() {
         name: target?.name || "this website",
         liveUrlHint: target?.liveUrl
           ? String(target.liveUrl).replace(/^https?:\/\//, "")
-          : "*.technonaire.site",
+          : null,
       });
       return;
     }
@@ -1091,7 +1091,7 @@ export default function ProfilePage() {
                         ) : (
                           <div className="mt-4 border-t border-white/10 pt-4">
                             <p className="text-xs text-blue-100/70">
-                              Subscribe to Starter to publish on a random.technonaire.site address.
+                              Subscribe to Starter to publish on a random Technonaire address.
                             </p>
                             <a
                               href="#plan"

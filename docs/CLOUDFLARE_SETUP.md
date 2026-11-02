@@ -7,20 +7,28 @@ This guide explains how to set up Cloudflare Custom Hostnames (Cloudflare for Sa
 The Domain plan ($29/month first website, $24/month additional) allows customers to connect their own domain (e.g., `mybusiness.com`) to their website. This is implemented using Cloudflare's Custom Hostnames API, which handles:
 
 - DNS verification
-- SSL certificate provisioning and renewal
-- Traffic routing to your Railway-hosted application
+- SSL certificate provisioning and renewal (DV certificates via HTTP validation)
+- Traffic routing via Cloudflare Worker proxy
 - Both apex (`example.com`) and www (`www.example.com`) domains
+
+## Pricing
+
+**Good news:** Cloudflare Free plan works for this!
+
+- **Free plan** includes first 100 Custom Hostnames at no cost
+- After 100 hostnames: **$0.10/month per hostname** (very affordable)
+- No Business or Enterprise plan required
 
 ## Architecture
 
 ```
 Customer's Domain (mybusiness.com)
-    ↓ (DNS points to Cloudflare)
-Cloudflare Custom Hostname
-    ↓ (proxy & SSL)
-Cloudflare Fallback Origin
+    ↓ (DNS points to customers.technonairebuilder.com)
+Cloudflare Custom Hostname (SSL termination)
+    ↓ (proxy to fallback origin)
+Cloudflare Worker (adds X-Forwarded-Host header)
     ↓
-Railway Application
+Railway Application (reads X-Forwarded-Host, routes correctly)
 ```
 
 ## Required Environment Variables
@@ -30,73 +38,102 @@ Add these to your Railway environment (or `.env.local` for local development):
 ### Cloudflare API Credentials
 
 ```bash
-# Required: Your Cloudflare API token with Custom Hostnames permissions
+# Required: Your Cloudflare API token with SSL and Certificates permissions
 CLOUDFLARE_API_TOKEN=your_cloudflare_api_token_here
 
-# Required: The Zone ID of your Cloudflare zone that acts as the SaaS fallback
+# Required: The Zone ID of technonairebuilder.com
 CLOUDFLARE_ZONE_ID=your_zone_id_here
 
-# Optional: Account ID (required for some operations)
-CLOUDFLARE_ACCOUNT_ID=your_account_id_here
+# Required: The fallback origin hostname (proxies through Cloudflare Worker to Railway)
+CLOUDFLARE_SAAS_FALLBACK_ORIGIN=fallback.technonairebuilder.com
 
-# Required: The fallback origin hostname (your Railway app domain)
-# Example: technonaire-website-builder.railway.app
-CLOUDFLARE_SAAS_FALLBACK_ORIGIN=your-railway-app.railway.app
+# Required: CNAME target customers should point to (must resolve to Cloudflare)
+CLOUDFLARE_CNAME_TARGET=customers.technonairebuilder.com
 ```
 
 ### Application Hostname
 
 ```bash
 # Required: Your builder application's own hostname
-# This prevents middleware from intercepting requests meant for the builder UI
-# Example: builder.technonaire.com or your-app.railway.app
+# Railway default: website-builder-production-0175.up.railway.app
+# Or custom: builder.technonaire.com
 APP_HOSTNAME=builder.technonaire.com
 
-# Required: Root domain for Technonaire subdomains
-# Example: technonaire.site
-SITE_HOST_ROOT=technonaire.site
+# Required: Root domain for Technonaire subdomains (Starter/Custom plans)
+SITE_HOST_ROOT=technonairebuilder.com
+NEXT_PUBLIC_SITE_HOST_ROOT=technonairebuilder.com
 ```
 
 ## Cloudflare Setup Steps
 
-### 1. Enable Cloudflare for SaaS
+### 1. DNS Records in technonairebuilder.com Zone
+
+Add these DNS records (all **Proxied** 🟠):
+
+| Type | Name | Target | Proxied |
+|------|------|--------|---------|
+| CNAME | `fallback` | `website-builder-production-0175.up.railway.app` | ✅ Yes |
+| CNAME | `customers` | `fallback.technonairebuilder.com` | ✅ Yes |
+| CNAME | `*` | `fallback.technonairebuilder.com` | ✅ Yes |
+
+Replace `website-builder-production-0175.up.railway.app` with your actual Railway default URL.
+
+### 2. Enable Cloudflare for SaaS
 
 1. Log into your Cloudflare dashboard
-2. Navigate to your zone (the domain that will act as the fallback origin)
+2. Select the `technonairebuilder.com` zone
 3. Go to **SSL/TLS** → **Custom Hostnames**
-4. Click **Enable Cloudflare for SaaS**
+4. Click **Enable Cloudflare for SaaS** (if not already enabled)
 
-### 2. Create a Cloudflare API Token
+### 3. Set Fallback Origin
+
+In the Custom Hostnames section:
+
+1. Click **Edit** next to Fallback Origin
+2. Set to: `fallback.technonairebuilder.com`
+3. Save
+
+This routes all custom hostname traffic through your Worker.
+
+### 4. Create a Cloudflare API Token
 
 1. Go to **My Profile** → **API Tokens**
 2. Click **Create Token**
 3. Use the **Custom Token** template
 4. Configure permissions:
    - **Zone** → **SSL and Certificates** → **Edit**
-   - **Zone** → **Custom Hostnames** → **Edit**
-5. Set zone resources to include your SaaS zone
+5. Set zone resources to: **Include** → **Specific zone** → `technonairebuilder.com`
 6. Create the token and copy it to `CLOUDFLARE_API_TOKEN`
 
-### 3. Get Your Zone ID
+**Note:** You only need SSL and Certificates:Edit permission. The API documentation mentions Custom Hostnames permission but SSL and Certificates:Edit covers it.
 
-1. Go to your Cloudflare zone overview
+### 5. Get Your Zone ID
+
+1. Go to your Cloudflare zone overview for `technonairebuilder.com`
 2. Scroll down to the **API** section on the right sidebar
 3. Copy the **Zone ID** to `CLOUDFLARE_ZONE_ID`
 
-### 4. Configure Fallback Origin
+### 6. Deploy Cloudflare Worker (IMPORTANT)
 
-1. Set `CLOUDFLARE_SAAS_FALLBACK_ORIGIN` to your Railway application domain
-2. Ensure this domain is pointed to Railway via DNS
-3. Make sure your Railway app accepts requests from any hostname (no HOST header restrictions)
+See `cloudflare/worker/README.md` for detailed instructions. Summary:
 
-### 5. Railway Configuration
+```bash
+cd cloudflare/worker
+# Edit wrangler.toml and set RAILWAY_ORIGIN to your Railway default URL
+npx wrangler deploy
+```
+
+The Worker proxies requests to Railway with `X-Forwarded-Host` header so Railway knows the original hostname.
+
+**Without this Worker, Railway will return 404 for custom domains.**
+
+### 7. Railway Configuration
 
 In your Railway project:
 
 1. Add all environment variables listed above
-2. Ensure your app domain is accessible via HTTPS
-3. Verify the app can handle requests from custom domains
-4. Test the middleware routing logic
+2. Ensure your app accepts requests with `X-Forwarded-Host` header
+3. Verify middleware routing logic reads `X-Forwarded-Host` first, then `Host`
 
 ## How It Works
 
@@ -106,28 +143,38 @@ In your Railway project:
 2. **Hostname Creation**: Backend calls `createCustomHostnamesForDomain()`
    - Creates Cloudflare Custom Hostname for `mybusiness.com`
    - Creates Cloudflare Custom Hostname for `www.mybusiness.com`
-   - Returns validation records (TXT + CNAME)
+   - Uses SSL method `http` and type `dv` (Domain Validation)
+   - Returns validation records
 3. **Database Storage**: Stores Cloudflare hostname IDs, statuses, and validation records
-4. **UI Display**: Shows DNS records with copy buttons
+4. **UI Display**: Shows DNS instructions with copy buttons
 
-### Customer Adds DNS Records
+### DNS Instructions for Customers
 
-Customer goes to their domain registrar (GoDaddy, Namecheap, etc.) and adds:
+Customers see these instructions:
 
-**TXT Record** (for verification):
-- Name: `_cf-custom-hostname.mybusiness.com`
-- Value: `<random-verification-token>`
+**For apex domain:**
+```
+CNAME @ → customers.technonairebuilder.com
+```
+(Use CNAME flattening if supported, or ALIAS/ANAME record)
 
-**CNAME Records** (for routing):
-- Name: `@` (apex) → Value: `your-railway-app.railway.app`
-- Name: `www` → Value: `your-railway-app.railway.app`
+**For www subdomain:**
+```
+CNAME www → customers.technonairebuilder.com
+```
+
+**Note on apex domains:** Some DNS providers don't support CNAME for apex (root) domains. Recommend:
+- Cloudflare (supports CNAME flattening automatically)
+- Route 53 (use ALIAS record)
+- DNSimple (use ALIAS record)
+- For others: Customer may need to redirect apex → www at their registrar
 
 ### Verification Process
 
 1. **Polling**: Backend calls `verifyDnsForDomain()` periodically
 2. **Cloudflare Check**: Queries Cloudflare API for hostname status
 3. **Status Mapping**:
-   - `pending` → "Waiting for DNS"
+   - `pending_validation` → "Waiting for DNS"
    - `active` → "Connected"
    - `moved`/`deleted`/`blocked` → "Needs attention"
 4. **SSL Status**:
@@ -140,12 +187,14 @@ Customer goes to their domain registrar (GoDaddy, Namecheap, etc.) and adds:
 Once verified:
 
 1. Customer visits `mybusiness.com`
-2. DNS resolves to Cloudflare
+2. DNS resolves to `customers.technonairebuilder.com` (Cloudflare)
 3. Cloudflare Custom Hostname matches the request
-4. Cloudflare proxies to fallback origin (Railway)
-5. Railway receives request with `Host: mybusiness.com`
-6. Next.js middleware intercepts and rewrites to `/site/custom-domain/[domain]`
-7. Dynamic route fetches site data and renders content
+4. Cloudflare routes to fallback origin → Cloudflare Worker
+5. Worker adds `X-Forwarded-Host: mybusiness.com` header
+6. Worker proxies to Railway origin
+7. Railway receives request with original hostname in `X-Forwarded-Host`
+8. Next.js middleware reads `X-Forwarded-Host` and rewrites to `/site/custom-domain/mybusiness.com`
+9. Dynamic route fetches site data and renders content
 
 ## Development Mode
 
@@ -173,6 +222,93 @@ This runs:
 
 The tests use mocked Cloudflare responses and don't require real credentials.
 
+## Troubleshooting
+
+### "Cloudflare not configured" Error
+
+**Symptom**: Domain verification fails immediately with config error.
+
+**Solution**: Verify all required env vars are set:
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ZONE_ID`
+- `CLOUDFLARE_SAAS_FALLBACK_ORIGIN`
+- `CLOUDFLARE_CNAME_TARGET`
+
+### Custom Hostnames Not Created
+
+**Symptom**: API returns error when adding domain.
+
+**Solutions**:
+1. Check API token permissions (needs SSL and Certificates: Edit)
+2. Verify zone has Cloudflare for SaaS enabled
+3. Check zone ID is correct
+4. Ensure API token isn't expired
+5. Check rate limits (Cloudflare API has rate limits)
+
+### DNS Records Not Verifying
+
+**Symptom**: Domain stays in "pending" state after customer adds records.
+
+**Solutions**:
+1. Verify customer added CNAME to `customers.technonairebuilder.com` (NOT to Railway URL)
+2. Wait 5-30 minutes for DNS propagation
+3. Check Cloudflare dashboard for hostname status
+4. Use `dig` or `nslookup` to verify DNS records propagate:
+   ```bash
+   dig mybusiness.com
+   dig www.mybusiness.com
+   ```
+
+### SSL Certificate Not Provisioning
+
+**Symptom**: Domain verifies but SSL stays pending.
+
+**Solutions**:
+1. Cloudflare auto-provisions DV SSL via HTTP validation - can take 5-15 minutes
+2. Check Cloudflare dashboard Custom Hostnames section for SSL status
+3. Ensure DNS points to `customers.technonairebuilder.com` (proxied through Cloudflare)
+4. Verify HTTP validation is accessible (ssl.method = "http" in code)
+
+### Railway Returns 404 for Custom Domains
+
+**Symptom**: Domain is verified but visiting it returns 404 from Railway.
+
+**Solution**: This means the Cloudflare Worker is not deployed or not configured correctly.
+
+1. Deploy the Worker: `cd cloudflare/worker && npx wrangler deploy`
+2. Verify fallback origin points to the Worker
+3. Check Railway logs to see what Host header is received
+4. Ensure middleware reads `X-Forwarded-Host` first
+
+### Worker Not Proxying
+
+**Symptom**: Worker deployed but still getting 404.
+
+**Solutions**:
+1. Check `RAILWAY_ORIGIN` in `wrangler.toml` matches Railway default URL
+2. View Worker logs in Cloudflare dashboard
+3. Test Worker directly at `https://<worker-name>.<subdomain>.workers.dev`
+4. Ensure DNS `fallback` points to Worker URL
+
+### Middleware Not Routing
+
+**Symptom**: Request reaches Railway but renders wrong content.
+
+**Solution**: Check middleware reads `X-Forwarded-Host`:
+
+```javascript
+// src/proxy.js should read X-Forwarded-Host first
+const forwardedHost = request.headers.get("x-forwarded-host");
+```
+
+## Security Considerations
+
+1. **API Token Rotation**: Rotate Cloudflare API tokens periodically
+2. **Least Privilege**: Token should only have SSL and Certificates permissions
+3. **Validation Records**: Never expose validation tokens in logs or client-side
+4. **Rate Limiting**: Cloudflare API has rate limits - implement queuing for batch operations
+5. **Worker Security**: Worker has access to all traffic - keep code minimal and audited
+
 ## Monitoring & Health Checks
 
 ### Check Domain Status
@@ -181,14 +317,6 @@ The tests use mocked Cloudflare responses and don't require real credentials.
 // Backend: Check a single domain
 import { verifyDnsForDomain } from '@/lib/site-address';
 const result = await verifyDnsForDomain('mybusiness.com');
-```
-
-### Batch Health Check
-
-```javascript
-// Backend: Check all pending domains
-import { checkAllDomainHealth } from '@/lib/domain-health';
-await checkAllDomainHealth();
 ```
 
 ### Cloudflare API Status
@@ -201,90 +329,27 @@ if (!isCloudflareConfigured()) {
 }
 ```
 
-## Troubleshooting
+## Summary of Railway Environment Variables
 
-### "Cloudflare not configured" Error
+```bash
+# App identification
+APP_HOSTNAME=builder.technonaire.com
+SITE_HOST_ROOT=technonairebuilder.com
+NEXT_PUBLIC_SITE_HOST_ROOT=technonairebuilder.com
 
-**Symptom**: Domain verification fails immediately with config error.
-
-**Solution**: Verify all required env vars are set:
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ZONE_ID`
-- `CLOUDFLARE_SAAS_FALLBACK_ORIGIN`
-
-### Custom Hostnames Not Created
-
-**Symptom**: API returns error when adding domain.
-
-**Solutions**:
-1. Check API token permissions (needs Custom Hostnames + SSL edit)
-2. Verify zone has Cloudflare for SaaS enabled
-3. Check zone ID is correct
-4. Ensure API token isn't expired
-
-### DNS Records Not Verifying
-
-**Symptom**: Domain stays in "pending" state after customer adds records.
-
-**Solutions**:
-1. Verify customer added records correctly (exact values)
-2. Wait 5-30 minutes for DNS propagation
-3. Check Cloudflare dashboard for hostname status
-4. Use `dig` or `nslookup` to verify DNS records are live
-
-### SSL Certificate Not Provisioning
-
-**Symptom**: Domain verifies but SSL stays pending.
-
-**Solutions**:
-1. Cloudflare auto-provisions SSL - can take 5-15 minutes
-2. Check Cloudflare dashboard SSL/TLS settings
-3. Ensure Universal SSL is enabled in your zone
-4. Verify customer's DNS records are correct
-
-### Middleware Conflicts
-
-**Symptom**: Builder app itself returns 404 or custom domain pages.
-
-**Solution**: Verify `APP_HOSTNAME` is set and matches your builder's actual domain. Middleware should skip requests to `APP_HOSTNAME`.
-
-### Railway HOST Header Issues
-
-**Symptom**: Railway returns wrong content for custom domains.
-
-**Solution**: Ensure your Railway app accepts any hostname. Don't restrict by HOST header in Railway settings.
-
-## Security Considerations
-
-1. **API Token Rotation**: Rotate Cloudflare API tokens periodically
-2. **Least Privilege**: Token should only have Custom Hostnames and SSL permissions
-3. **Validation Records**: Never expose validation tokens in logs or client-side
-4. **Rate Limiting**: Cloudflare API has rate limits - implement queuing for batch operations
-
-## Pricing Notes
-
-### Cloudflare Costs
-
-Cloudflare for SaaS typically requires:
-- **Business Plan or higher** ($200/month) for SaaS functionality
-- **Custom Hostnames**: $2 per hostname per month (first 100 free on Enterprise)
-
-### Recommended Plan
-
-For production SaaS:
-- **Cloudflare Enterprise**: Best pricing for high-volume custom hostnames
-- Contact Cloudflare sales for pricing based on expected hostname count
-
-### Alternative (if starting small)
-
-- Use Cloudflare Business plan for initial testing
-- Upgrade to Enterprise when you exceed 100 hostnames or need better pricing
+# Cloudflare for SaaS
+CLOUDFLARE_API_TOKEN=your_token_here
+CLOUDFLARE_ZONE_ID=your_zone_id_here
+CLOUDFLARE_SAAS_FALLBACK_ORIGIN=fallback.technonairebuilder.com
+CLOUDFLARE_CNAME_TARGET=customers.technonairebuilder.com
+```
 
 ## Support & Resources
 
 - [Cloudflare for SaaS Documentation](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/)
 - [Custom Hostnames API Reference](https://developers.cloudflare.com/api/operations/custom-hostname-for-a-zone-create-custom-hostname)
 - [SSL for SaaS](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/security/certificate-management/)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 
 ## Contact
 

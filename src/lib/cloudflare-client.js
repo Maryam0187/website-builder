@@ -111,7 +111,7 @@ export async function createCustomHostname(hostname, options = {}) {
   const payload = {
     hostname,
     ssl: {
-      method: "http",
+      method: options.sslMethod || "http",
       type: "dv",
       settings: {
         http2: "on",
@@ -235,23 +235,17 @@ export function extractValidationRecords(cfHostname) {
   }
 
   // CNAME pointing to fallback origin (required for routing)
-  let config;
-  try {
-    config = getCloudflareConfig();
-  } catch (err) {
-    // Cloudflare not configured - return what we have so far
-    return records;
-  }
+  const cnameTarget = process.env.CLOUDFLARE_CNAME_TARGET || `customers.${process.env.SITE_HOST_ROOT || "technonairebuilder.com"}`;
   const hostname = cfHostname.hostname;
   
   if (isApexDomain(hostname)) {
-    // Apex domain - recommend CNAME flattening or A record
+    // Apex domain - recommend CNAME flattening or ALIAS/ANAME
     records.push({
       type: 'CNAME',
       name: '@',
-      value: config.fallbackOrigin,
-      description: `Point apex to ${config.fallbackOrigin} (use CNAME flattening if your DNS supports it, or A record with the origin IP)`,
-      note: 'Some DNS providers require A record for apex. Contact us if you need help.'
+      value: cnameTarget,
+      description: `Point apex to ${cnameTarget} (use CNAME flattening if your DNS supports it, or ALIAS/ANAME record)`,
+      note: 'Some DNS providers require ALIAS or ANAME for apex. Contact support if you need help.'
     });
   } else {
     // Subdomain - standard CNAME
@@ -259,8 +253,8 @@ export function extractValidationRecords(cfHostname) {
     records.push({
       type: 'CNAME',
       name: subdomain,
-      value: config.fallbackOrigin,
-      description: `Point ${hostname} to ${config.fallbackOrigin}`
+      value: cnameTarget,
+      description: `Point ${hostname} to ${cnameTarget}`
     });
   }
 
@@ -347,7 +341,7 @@ export async function checkCustomHostnamesStatus(hostnameIds) {
  */
 export function getMockVerificationRecords(domain) {
   const isApex = isApexDomain(domain);
-  const fallbackOrigin = process.env.APP_HOSTNAME || "your-app.railway.app";
+  const cnameTarget = process.env.CLOUDFLARE_CNAME_TARGET || `customers.${process.env.SITE_HOST_ROOT || "technonairebuilder.com"}`;
   
   const records = [
     {
@@ -359,9 +353,9 @@ export function getMockVerificationRecords(domain) {
     {
       type: 'CNAME',
       name: isApex ? '@' : domain.split('.')[0],
-      value: fallbackOrigin,
-      description: `Point ${domain} to ${fallbackOrigin} (mock)`,
-      note: isApex ? 'Apex domains may require A record instead of CNAME' : undefined
+      value: cnameTarget,
+      description: `Point ${domain} to ${cnameTarget} (mock)`,
+      note: isApex ? 'Apex domains may require CNAME flattening or ALIAS/ANAME' : undefined
     }
   ];
 
