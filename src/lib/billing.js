@@ -1497,6 +1497,50 @@ export async function downgradeStripeSubscription(userId, planId) {
   };
 }
 
+/**
+ * Cancel subscription at period end (no proration)
+ * User keeps access until current period ends, then reverts to Free plan
+ */
+export async function cancelStripeSubscription(userId) {
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "owner") throw new Error("Only site owners can cancel subscriptions");
+
+  const sub = await getUsableStripeSubscription(user);
+  if (!sub) {
+    throw new Error("No active subscription to cancel");
+  }
+
+  const stripe = getStripe();
+  
+  // Cancel at period end (user keeps access until then)
+  const updatedSub = await stripe.subscriptions.update(sub.id, {
+    cancel_at_period_end: true,
+  });
+
+  const periodEndSec = stripeSubscriptionPeriodEndSec(updatedSub);
+  const periodEnd = new Date(periodEndSec * 1000);
+
+  // Keep subscription status as active until period ends
+  const updatedUser = await updateUserBilling(userId, {
+    subscriptionStatus: "canceled", // canceled but still active until period end
+    currentPeriodEnd: periodEnd.toISOString(),
+  });
+
+  const sitesUsed = await countSitesByOwner(userId);
+  const liveSites = await countLiveSitesByOwner(userId);
+  
+  return {
+    canceled: true,
+    user: updatedUser,
+    billing: billingPublicFields(updatedUser, { sitesUsed, liveSites }),
+    periodEnd: periodEnd.toISOString(),
+    message: `Subscription canceled. You keep access until ${periodEnd.toLocaleDateString()}. After that, your sites will be unpublished and custom domains/subdomains will be released within 30 days.`,
+  };
+}
+
 /** Create Stripe Checkout session for a plan (sandbox or live). */
 export async function createStripeCheckout(userId, planId = "starter", { returnTo } = {}) {
   if (!isStripeConfigured()) throw new Error("Stripe is not configured");

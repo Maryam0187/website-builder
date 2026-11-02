@@ -9,6 +9,8 @@ import {
   billingPublicFields,
   buyExtraSiteSlot,
   cancelSubscription,
+  cancelStripeSubscription,
+  downgradeStripeSubscription,
   createBillingPortal,
   createStripeAddonCheckout,
   createStripeCheckout,
@@ -194,12 +196,47 @@ export async function POST(request) {
       if (user.role !== "owner") {
         return NextResponse.json({ error: "Only owners can cancel" }, { status: 403 });
       }
+      
+      // Use new cancelStripeSubscription for better messaging
+      if (isStripeConfigured() && user.stripeSubscriptionId) {
+        const result = await cancelStripeSubscription(user.id);
+        return NextResponse.json({
+          user: result.user,
+          billing: result.billing,
+          periodEnd: result.periodEnd,
+          invoices: await listInvoicesForUser(user.id),
+          message: result.message,
+        });
+      }
+      
+      // Fallback for non-Stripe
       const updated = await cancelSubscription(user.id);
       return NextResponse.json({
         user: updated,
         billing: billingPublicFields(updated),
         invoices: await listInvoicesForUser(user.id),
-        message: "Subscription will cancel at period end. You keep access until then.",
+        message: "Subscription canceled.",
+      });
+    }
+
+    if (action === "downgrade") {
+      if (user.role !== "owner") {
+        return NextResponse.json({ error: "Only owners can downgrade" }, { status: 403 });
+      }
+      const planId = String(body.planId || "").trim();
+      if (!planId) {
+        return NextResponse.json({ error: "planId required" }, { status: 400 });
+      }
+      
+      const result = await downgradeStripeSubscription(user.id, planId);
+      return NextResponse.json({
+        downgraded: result.downgraded,
+        user: result.user,
+        billing: result.billing,
+        invoice: result.invoice,
+        plan: result.plan,
+        invoices: await listInvoicesForUser(user.id),
+        message: result.message,
       });
     }
 
