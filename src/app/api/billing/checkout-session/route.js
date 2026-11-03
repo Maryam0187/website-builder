@@ -20,6 +20,11 @@ export async function POST(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Rate limit: 10 requests per minute per user
+  const { rateLimiters, applyRateLimit } = await import("@/lib/rate-limit");
+  const rateCheck = await applyRateLimit(request, rateLimiters.checkout, 'checkout-session', user.id);
+  if (rateCheck.limited) return rateCheck.response;
+
   // Block Pakistan from Stripe
   const userRegion = user.region || "usa";
   if (!isStripeSupported(userRegion)) {

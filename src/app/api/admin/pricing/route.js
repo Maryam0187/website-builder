@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/admin-auth";
+import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 import { query } from "@/lib/db";
 import { getAllPricingConfigs, getPricingHistory, invalidatePricingCache } from "@/lib/pricing-cache";
 import Stripe from "stripe";
@@ -15,6 +16,10 @@ export async function GET(request) {
   try {
     const user = await getUser(request);
     requireAdmin(user);
+
+    // Rate limit: 100 requests per minute per admin
+    const rateCheck = await applyRateLimit(request, rateLimiters.admin, 'admin-pricing-get', user.id);
+    if (rateCheck.limited) return rateCheck.response;
     
     const { searchParams } = new URL(request.url);
     const configId = searchParams.get('configId');
@@ -55,6 +60,10 @@ export async function POST(request) {
     const user = await getUser(request);
     requireAdmin(user);
     
+    // Rate limit: 100 requests per minute per admin
+    const rateCheck = await applyRateLimit(request, rateLimiters.admin, 'admin-pricing-post', user.id);
+    if (rateCheck.limited) return rateCheck.response;
+
     const body = await request.json();
     const {
       id,

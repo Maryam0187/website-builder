@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/admin-auth";
+import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 import {
   listDiscounts,
   createDiscount,
@@ -20,6 +21,10 @@ export async function GET(request) {
   try {
     const user = await getUser(request);
     requireAdmin(user);
+
+    // Rate limit: 100 requests per minute per admin
+    const rateCheck = await applyRateLimit(request, rateLimiters.admin, 'admin-discounts-get', user.id);
+    if (rateCheck.limited) return rateCheck.response;
     
     const { searchParams } = new URL(request.url);
     const discountId = searchParams.get('discountId');
@@ -59,6 +64,10 @@ export async function POST(request) {
     const user = await getUser(request);
     requireAdmin(user);
     
+    // Rate limit: 100 requests per minute per admin
+    const rateCheck = await applyRateLimit(request, rateLimiters.admin, 'admin-discounts-post', user.id);
+    if (rateCheck.limited) return rateCheck.response;
+
     const body = await request.json();
     const { action, discountId } = body;
     

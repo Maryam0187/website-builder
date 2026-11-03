@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -13,6 +14,10 @@ export async function POST(request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Rate limit: 3 requests per 5 minutes per user
+  const rateCheck = await applyRateLimit(request, rateLimiters.contact, 'payment-request', user.id);
+  if (rateCheck.limited) return rateCheck.response;
 
   try {
     const body = await request.json();

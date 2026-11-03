@@ -20,6 +20,11 @@ export async function POST(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Rate limit: 20 requests per minute per IP
+    const { rateLimiters, applyRateLimit } = await import("@/lib/rate-limit");
+    const rateCheck = await applyRateLimit(request, rateLimiters.public, 'validate-discount');
+    if (rateCheck.limited) return rateCheck.response;
+
     const body = await request.json();
     const { code, planId, billingInterval = 'monthly' } = body;
 

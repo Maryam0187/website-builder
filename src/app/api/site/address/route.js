@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser, denyIfMustChangePassword, getUserById } from "@/lib/auth";
+import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 import {
   checkSubdomainAvailability,
   claimSubdomainForSite,
@@ -24,6 +25,10 @@ export async function GET(request) {
   const user = await requireUser(["owner"]);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   
+  // Rate limit: 20 requests per minute per IP
+  const rateCheck = await applyRateLimit(request, rateLimiters.public, 'domain-check');
+  if (rateCheck.limited) return rateCheck.response;
+
   const blocked = denyIfMustChangePassword(user);
   if (blocked) return blocked;
 
@@ -114,6 +119,10 @@ export async function GET(request) {
 export async function POST(request) {
   const user = await requireUser(["owner"]);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Rate limit: 10 requests per minute per user
+  const rateCheck = await applyRateLimit(request, rateLimiters.api, 'domain-operation', user.id);
+  if (rateCheck.limited) return rateCheck.response;
 
   const blocked = denyIfMustChangePassword(user);
   if (blocked) return blocked;

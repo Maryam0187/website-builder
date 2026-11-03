@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { changePassword, getCurrentUser, getUserById, publicUser } from "@/lib/auth";
+import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request) {
   const user = await getCurrentUser();
+  
+  // Rate limit: 5 requests per minute per user
+  if (user) {
+    const rateCheck = await applyRateLimit(request, rateLimiters.auth, 'change-password', user.id);
+    if (rateCheck.limited) return rateCheck.response;
+  }
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

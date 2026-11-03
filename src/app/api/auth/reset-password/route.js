@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getValidPasswordResetToken, resetPasswordWithToken } from "@/lib/auth";
+import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -18,6 +19,10 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  // Rate limit: 5 requests per minute per IP
+  const rateCheck = await applyRateLimit(request, rateLimiters.auth, 'reset-password');
+  if (rateCheck.limited) return rateCheck.response;
+
   const body = await request.json().catch(() => ({}));
   const token = String(body.token || "").trim();
   const newPassword = String(body.newPassword || "");

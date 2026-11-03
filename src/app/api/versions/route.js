@@ -72,9 +72,12 @@ export async function POST(request) {
       return NextResponse.json({ error: "conversationId required" }, { status: 400 });
     }
 
-    // Verify ownership
+    // Verify ownership through site
     const siteResult = await query(
-      `SELECT owner_id FROM conversations WHERE id = $1`,
+      `SELECT s.owner_id 
+       FROM conversations c
+       JOIN sites s ON c.site_id = s.id
+       WHERE c.id = $1`,
       [conversationId]
     );
 
@@ -153,7 +156,10 @@ export async function DELETE(request) {
     }
 
     const siteResult = await query(
-      `SELECT owner_id FROM conversations WHERE id = $1`,
+      `SELECT s.owner_id 
+       FROM conversations c
+       JOIN sites s ON c.site_id = s.id
+       WHERE c.id = $1`,
       [version.conversation_id]
     );
 
