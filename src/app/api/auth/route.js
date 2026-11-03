@@ -11,6 +11,7 @@ import {
   publicUser,
   verifyPassword,
 } from "@/lib/auth";
+import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -18,6 +19,12 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  // Rate limit: 5 login attempts per minute per IP
+  const rateCheck = await applyRateLimit(request, rateLimiters.auth, 'login');
+  if (rateCheck.limited) {
+    return rateCheck.response;
+  }
+
   await ensureAdminUser();
   const body = await request.json().catch(() => ({}));
 
