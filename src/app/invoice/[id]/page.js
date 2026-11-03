@@ -133,9 +133,10 @@ export default function InvoicePage() {
     );
   }
 
-  const { invoice, owner, plan, addon, stripeEnabled } = data;
+  const { invoice, owner, plan, addon, stripeEnabled, slotPlan } = data;
   const paid = invoice.status === "paid";
   const isAddon = Boolean(invoice.addonId || addon);
+  const isSiteSlot = invoice.addonId === "site_plus_1" && paid && invoice.slotPlanId;
   const itemName = addon?.name || plan?.name || invoice.planName || "Package";
   const itemPriceLabel = addon?.priceLabel || plan?.priceLabel || "";
   const itemKind = isAddon ? "One-time add-on (USD)" : "Monthly subscription (USD)";
@@ -399,32 +400,50 @@ export default function InvoicePage() {
                 {payMsg ? <p className="mt-3 text-sm text-red-300">{payMsg}</p> : null}
               </div>
             ) : (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-3 print:mt-6 print:gap-4 print:border-green-700 print:bg-green-50 print:px-4 print:py-4">
-                <div className="min-w-0 text-left">
-                  <p className="text-sm font-semibold text-emerald-100 print:text-green-900">
-                    This invoice is paid. Thank you.
-                  </p>
-                  <p className="mt-0.5 text-xs text-emerald-100/85 print:mt-1 print:text-green-800">
-                    Paid securely through Stripe
-                    {invoice.paidAt ? ` on ${formatDate(invoice.paidAt)}` : ""}.
-                  </p>
-                </div>
-                <div
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#635BFF] px-2.5 py-1.5 text-white print:px-3 print:py-2 print:shadow-none"
-                  title="Secured by Stripe"
-                >
-                  <svg
-                    className="h-3.5 w-3.5 shrink-0"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    aria-hidden
+              <div className="mt-4 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-3 print:gap-4 print:border-green-700 print:bg-green-50 print:px-4 print:py-4">
+                  <div className="min-w-0 text-left">
+                    <p className="text-sm font-semibold text-emerald-100 print:text-green-900">
+                      This invoice is paid. Thank you.
+                    </p>
+                    <p className="mt-0.5 text-xs text-emerald-100/85 print:mt-1 print:text-green-800">
+                      Paid securely through Stripe
+                      {invoice.paidAt ? ` on ${formatDate(invoice.paidAt)}` : ""}.
+                    </p>
+                  </div>
+                  <div
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#635BFF] px-2.5 py-1.5 text-white print:px-3 print:py-2 print:shadow-none"
+                    title="Secured by Stripe"
                   >
-                    <path d="M5.5 5.2V4a2.5 2.5 0 0 1 5 0v1.2H12a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 12 14H4a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 4 5.2h1.5zM7 4a1 1 0 1 1 2 0v1.2H7V4zm1 5.25a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z" />
-                  </svg>
-                  <span className="text-[11px] font-bold tracking-wide whitespace-nowrap">
-                    Secured by Stripe
-                  </span>
+                    <svg
+                      className="h-3.5 w-3.5 shrink-0"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      aria-hidden
+                    >
+                      <path d="M5.5 5.2V4a2.5 2.5 0 0 1 5 0v1.2H12a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 12 14H4a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 4 5.2h1.5zM7 4a1 1 0 1 1 2 0v1.2H7V4zm1 5.25a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z" />
+                    </svg>
+                    <span className="text-[11px] font-bold tracking-wide whitespace-nowrap">
+                      Secured by Stripe
+                    </span>
+                  </div>
                 </div>
+
+                {isSiteSlot && slotPlan ? (
+                  <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-4 print:hidden">
+                    <p className="font-semibold text-white">Next Step: Create Your Website</p>
+                    <p className="mt-2 text-sm text-blue-100">
+                      You've paid for an additional website slot with the <strong>{slotPlan.name}</strong> plan.
+                      Click below to name and create your new website.
+                    </p>
+                    <a
+                      href={`/profile?slotPlanId=${invoice.slotPlanId}#plan`}
+                      className="mt-4 inline-block rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+                    >
+                      Create Your Website →
+                    </a>
+                  </div>
+                ) : null}
               </div>
             )}
 

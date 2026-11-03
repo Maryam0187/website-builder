@@ -41,9 +41,7 @@ export default function GoLiveDialog({
               like{" "}
               <span className="font-medium text-cyan-200">{liveUrlHint}</span>
             </>
-          ) : (
-            " (*.technonaire.site)"
-          )}
+          ) : null}
           . Anyone with the link can open it.
         </p>
         <div className="mt-6 flex flex-wrap justify-end gap-2">

@@ -9,12 +9,18 @@
     "start:railway": "bash scripts/railway-start.sh",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed-local": "node scripts/seed-local-users.mjs",
-    "lint": "eslint"
+    "db:reset-local": "node scripts/reset-local-db.mjs",
+    "lint": "eslint",
+    "test": "node --test tests/cloudflare-integration.test.js tests/domain-ux.test.js",
+    "test:watch": "node --test --watch tests/cloudflare-integration.test.js tests/domain-ux.test.js",
+    "test:all": "node --test tests/**/*.test.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^6.10.0",
+    "@stripe/stripe-js": "^9.16.0",
     "bcryptjs": "^3.0.3",
     "nanoid": "^6.0.0",
     "next": "16.2.12",

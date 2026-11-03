@@ -9,6 +9,8 @@ import {
   billingPublicFields,
   buyExtraSiteSlot,
   cancelSubscription,
+  cancelStripeSubscription,
+  downgradeStripeSubscription,
   createBillingPortal,
   createStripeAddonCheckout,
   createStripeCheckout,
@@ -21,6 +23,7 @@ import {
 } from "@/lib/billing";
 import { isStripeConfigured } from "@/lib/stripe";
 import { countLiveSitesByOwner, countSitesByOwner } from "@/lib/store-actions";
+import { isStripeSupported } from "@/lib/pricing";
 
 async function billingForUser(user) {
   const fresh = publicUser(await getUserById(user.id));
@@ -54,6 +57,16 @@ export async function POST(request) {
 
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || "").trim();
+
+  // Block Pakistan from Stripe operations
+  const stripeActions = ["subscribe", "checkout", "buy-site-slot", "buy-addon", "cancel-subscription", "downgrade"];
+  const userRegion = user.region || "usa";
+  if (stripeActions.includes(action) && !isStripeSupported(userRegion)) {
+    return NextResponse.json({
+      error: "Stripe payments not available in your region. Please contact us for payment options.",
+      region: userRegion,
+    }, { status: 400 });
+  }
 
   try {
     if (action === "start-trial") {
@@ -170,11 +183,12 @@ export async function POST(request) {
         invoice: result.invoice || null,
         invoiceUrl: result.invoiceUrl || null,
         addonId: result.addonId || null,
+        slotPlanId: result.slotPlanId || null,
         kind: result.kind || null,
         returnTo: result.returnTo || null,
         promptCreateSite: Boolean(isSiteSlot && billing?.canCreateSite),
         message: isSiteSlot
-          ? "Payment confirmed — name your second website to finish setup."
+          ? "Payment confirmed — name your new website to get started."
           : result.kind === "addon" || result.kind === "payment"
             ? "Payment confirmed — website slots added."
             : "Payment confirmed — package activated.",
@@ -193,12 +207,47 @@ export async function POST(request) {
       if (user.role !== "owner") {
         return NextResponse.json({ error: "Only owners can cancel" }, { status: 403 });
       }
+      
+      // Use new cancelStripeSubscription for better messaging
+      if (isStripeConfigured() && user.stripeSubscriptionId) {
+        const result = await cancelStripeSubscription(user.id);
+        return NextResponse.json({
+          user: result.user,
+          billing: result.billing,
+          periodEnd: result.periodEnd,
+          invoices: await listInvoicesForUser(user.id),
+          message: result.message,
+        });
+      }
+      
+      // Fallback for non-Stripe
       const updated = await cancelSubscription(user.id);
       return NextResponse.json({
         user: updated,
         billing: billingPublicFields(updated),
         invoices: await listInvoicesForUser(user.id),
-        message: "Subscription will cancel at period end. You keep access until then.",
+        message: "Subscription canceled.",
+      });
+    }
+
+    if (action === "downgrade") {
+      if (user.role !== "owner") {
+        return NextResponse.json({ error: "Only owners can downgrade" }, { status: 403 });
+      }
+      const planId = String(body.planId || "").trim();
+      if (!planId) {
+        return NextResponse.json({ error: "planId required" }, { status: 400 });
+      }
+      
+      const result = await downgradeStripeSubscription(user.id, planId);
+      return NextResponse.json({
+        downgraded: result.downgraded,
+        user: result.user,
+        billing: result.billing,
+        invoice: result.invoice,
+        plan: result.plan,
+        invoices: await listInvoicesForUser(user.id),
+        message: result.message,
       });
     }
 

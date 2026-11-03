@@ -37,10 +37,18 @@ Tables are created automatically from `src/lib/schema.sql` on first request.
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### Default admin
+### Reset local DB (admin + one owner only)
 
-- Email: `admin@technonaire.com` (or `ADMIN_EMAIL`)
-- Password: `changeme123` (or `ADMIN_PASSWORD`)
+Wipes all local data, then seeds only admin and one owner:
+
+```bash
+npm run db:reset-local
+```
+
+### Default credentials
+
+- Admin: `admin@technonaire.com` / `changeme123` (or `ADMIN_EMAIL` / `ADMIN_PASSWORD`)
+- Owner: `owner@local.test` / `owner12345` (or `OWNER_EMAIL` / `OWNER_PASSWORD`)
 
 ### Typical flow
 
@@ -77,8 +85,8 @@ Images are stored under `/data/uploads` (see `scripts/railway-start.sh`).
 |----------|---------|
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
 | `NEXT_PUBLIC_APP_URL` | `https://your-service.up.railway.app` |
-| `SITE_HOST_ROOT` | `technonaire.site` (customer live hosts) |
-| `NEXT_PUBLIC_SITE_HOST_ROOT` | `technonaire.site` (same, for UI links) |
+| `SITE_HOST_ROOT` | `technonairebuilder.com` (customer live hosts) |
+| `NEXT_PUBLIC_SITE_HOST_ROOT` | `technonairebuilder.com` (same, for UI links) |
 | `NEXT_PUBLIC_TECHNONAIRE_URL` | `https://technonaire.com` |
 | `SESSION_SECRET` | long random string |
 | `ADMIN_EMAIL` | your admin email |
@@ -91,16 +99,34 @@ Redeploy after setting variables.
 ### 4. Domain (optional)
 Railway → Settings → Domains → `.up.railway.app` or `builder.technonaire.com`.
 
-### 4b. Customer live hosts (`*.technonaire.site`)
-Starter sites publish to a random address like `https://a1b2c3d4.technonaire.site`.
+### 4b. Customer live hosts (`*.technonairebuilder.com`)
 
-1. Own the domain `technonaire.site`
-2. Railway → Domains → add `technonaire.site` and `*.technonaire.site` (wildcard)
+#### Starter Plan (Random Subdomain)
+Starter sites publish to a random address like `https://a1b2c3d4.technonairebuilder.com`.
+
+#### Custom Plan (Chosen Subdomain)
+Custom plan users choose their subdomain like `https://mybusiness.technonairebuilder.com`.
+
+#### Domain Plan (Custom Domain)
+Domain plan users bring their own domain like `https://mybusiness.com`.
+
+**Railway Wildcard Setup:**
+1. Own the domain `technonairebuilder.com`
+2. Railway → Domains → add `technonairebuilder.com` and `*.technonairebuilder.com` (wildcard)
 3. DNS: CNAME/A for apex + wildcard as Railway instructs
-4. Enable TLS / wildcard certificate for `*.technonaire.site`
-5. Set `SITE_HOST_ROOT` and `NEXT_PUBLIC_SITE_HOST_ROOT` to `technonaire.site`
+4. Enable TLS / wildcard certificate for `*.technonairebuilder.com`
+5. Set `SITE_HOST_ROOT` and `NEXT_PUBLIC_SITE_HOST_ROOT` to `technonairebuilder.com`
 
-Locally, Preview still uses `/site/{slug}`. Live URLs show as `https://{subdomain}.technonaire.site` once assigned.
+**Custom Domains:**
+- Middleware routes custom domains to sites via `custom_domain` column
+- DNS verification via Cloudflare Custom Hostnames API (see CLOUDFLARE_SETUP.md)
+- SSL auto-provisioning via Cloudflare (DV certificates)
+- Cloudflare Worker proxies customer domains to Railway with X-Forwarded-Host header
+
+Locally, Preview still uses `/site/{slug}`. Live URLs show as:
+- Starter: `https://{random}.technonairebuilder.com`
+- Custom: `https://{chosen}.technonairebuilder.com`
+- Domain: `https://{custom-domain}`
 
 ### 5. Point agency (Netlify)
 
