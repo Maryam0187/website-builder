@@ -2180,7 +2180,7 @@ export async function subscribeWithSavedCard(userId, planId = "starter") {
     items: [{ price: price.id, quantity }],
     default_payment_method: pmId,
     payment_behavior: "default_incomplete",
-    expand: ["latest_invoice.payment_intent"],
+    expand: ["latest_invoice"],
     metadata: {
       userId: String(user.id),
       planId: plan.id,

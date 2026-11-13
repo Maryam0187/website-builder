@@ -60,7 +60,7 @@ describe("Stripe Subscription Live API Test", () => {
           payment_method_types: ["card"],
           save_default_payment_method: "on_subscription",
         },
-        expand: ["latest_invoice.payment_intent"],
+        expand: ["latest_invoice"],
         metadata: { test: "true" },
       });
 
@@ -72,17 +72,43 @@ describe("Stripe Subscription Live API Test", () => {
       assert.ok(latestInvoice, "Should have latest_invoice");
       console.log("✓ Latest invoice:", latestInvoice.id);
       console.log("  Invoice status:", latestInvoice.status);
+      console.log("  Invoice total:", latestInvoice.total);
+
+      // Handle $0 invoices
+      if (latestInvoice.total === 0) {
+        console.log("⚠️  $0 invoice - no payment needed");
+        if (latestInvoice.setup_intent) {
+          console.log("  Has setup_intent:", latestInvoice.setup_intent);
+        }
+        // Skip client secret check for $0 invoices
+        await stripe.customers.del(customer.id);
+        console.log("✓ Cleaned up test customer");
+        return;
+      }
 
       // Check for client secret in different locations
       let clientSecret = null;
       let secretSource = null;
 
       if (latestInvoice.confirmation_secret) {
-        clientSecret = latestInvoice.confirmation_secret;
-        secretSource = "confirmation_secret";
-      } else if (latestInvoice.payment_intent?.client_secret) {
-        clientSecret = latestInvoice.payment_intent.client_secret;
-        secretSource = "payment_intent.client_secret";
+        // confirmation_secret is an OBJECT in new API: {client_secret, type}
+        if (typeof latestInvoice.confirmation_secret === 'object') {
+          clientSecret = latestInvoice.confirmation_secret.client_secret;
+          secretSource = "confirmation_secret.client_secret (object)";
+        } else {
+          clientSecret = latestInvoice.confirmation_secret;
+          secretSource = "confirmation_secret (string)";
+        }
+      } else if (latestInvoice.payment_intent) {
+        // payment_intent might be ID string or expanded object
+        if (typeof latestInvoice.payment_intent === 'string') {
+          const pi = await stripe.paymentIntents.retrieve(latestInvoice.payment_intent);
+          clientSecret = pi.client_secret;
+          secretSource = "payment_intent (retrieved by ID)";
+        } else {
+          clientSecret = latestInvoice.payment_intent.client_secret;
+          secretSource = "payment_intent.client_secret (expanded)";
+        }
       }
 
       console.log("✓ Client secret source:", secretSource);
@@ -93,14 +119,15 @@ describe("Stripe Subscription Live API Test", () => {
       } else {
         console.log("  ⚠️  Invoice structure:", {
           hasConfirmationSecret: !!latestInvoice.confirmation_secret,
+          confirmationSecretType: typeof latestInvoice.confirmation_secret,
           hasPaymentIntent: !!latestInvoice.payment_intent,
-          paymentIntentStatus: latestInvoice.payment_intent?.status,
+          paymentIntentType: typeof latestInvoice.payment_intent,
         });
       }
 
       assert.ok(
         clientSecret,
-        "Should have client secret (either confirmation_secret or payment_intent.client_secret)"
+        "Should have client secret (confirmation_secret.client_secret or payment_intent.client_secret)"
       );
 
       // Clean up
@@ -124,8 +151,10 @@ describe("Stripe Subscription Live API Test", () => {
       customer: "Required - Stripe customer ID",
       items: "Required - Array with at least one item containing price ID",
       payment_behavior: "Use 'default_incomplete' for on-site payment",
-      expand: "Must include 'latest_invoice.payment_intent' to get client secret",
+      expand: "Use ['latest_invoice'] - works across API versions",
       payment_settings: "Should include payment_method_types and save behavior",
+      apiVersion: "Pin explicitly in Stripe client for consistency",
+      clientSecret: "confirmation_secret.client_secret (2024+) OR payment_intent.client_secret (older)",
     };
 
     assert.ok(requirements.customer);

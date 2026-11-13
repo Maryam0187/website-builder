@@ -118,6 +118,7 @@ export async function POST(request) {
     }
 
     // Create subscription with the Price ID
+    // Use latest_invoice for expansion (works across API versions)
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: priceId }],
@@ -126,7 +127,7 @@ export async function POST(request) {
         payment_method_types: ["card"],
         save_default_payment_method: "on_subscription",
       },
-      expand: ["latest_invoice.payment_intent"],
+      expand: ["latest_invoice"],
       metadata: {
         userId: String(freshUser.id),
         planId: plan.id,
@@ -149,23 +150,64 @@ export async function POST(request) {
       );
     }
 
-    // Try new API structure first (confirmation_secret on invoice)
-    if (latestInvoice.confirmation_secret) {
-      clientSecret = latestInvoice.confirmation_secret;
-    }
-    // Fall back to payment_intent.client_secret (older API versions)
-    else if (latestInvoice.payment_intent?.client_secret) {
-      clientSecret = latestInvoice.payment_intent.client_secret;
+    // Handle $0 invoices (100% discount, trial, etc.)
+    if (latestInvoice.total === 0 || latestInvoice.amount_due === 0) {
+      console.log("Checkout session: $0 invoice, no payment needed", {
+        subscriptionId: subscription.id,
+        invoiceId: latestInvoice.id,
+      });
+      
+      // For $0 invoices, check if there's a setup intent
+      if (latestInvoice.setup_intent) {
+        const setupIntent = await stripe.setupIntents.retrieve(latestInvoice.setup_intent);
+        clientSecret = setupIntent.client_secret;
+      } else {
+        // No payment or setup needed - subscription is active
+        return NextResponse.json({
+          clientSecret: null,
+          subscriptionId: subscription.id,
+          requiresPayment: false,
+          plan: {
+            id: plan.id,
+            name: plan.name,
+            priceCents: plan.priceCents,
+            priceLabel: plan.priceLabel,
+            additionalPriceCents: plan.additionalPriceCents,
+            additionalPriceLabel: plan.additionalPriceLabel,
+            highlights: plan.highlights,
+          },
+          mode,
+        });
+      }
+    } else {
+      // Normal paid invoice - get client secret
+      // Try confirmation_secret first (2024+ API)
+      if (latestInvoice.confirmation_secret) {
+        // confirmation_secret is an OBJECT: {client_secret, type}
+        clientSecret = typeof latestInvoice.confirmation_secret === 'object'
+          ? latestInvoice.confirmation_secret.client_secret
+          : latestInvoice.confirmation_secret;
+      }
+      // Fall back to payment_intent.client_secret (pre-2024 API)
+      else if (latestInvoice.payment_intent) {
+        const paymentIntent = typeof latestInvoice.payment_intent === 'string'
+          ? await stripe.paymentIntents.retrieve(latestInvoice.payment_intent)
+          : latestInvoice.payment_intent;
+        clientSecret = paymentIntent.client_secret;
+      }
     }
 
     if (!clientSecret) {
       console.error("Checkout session error: No client secret found", {
         subscriptionId: subscription.id,
         invoiceId: latestInvoice.id,
+        invoiceTotal: latestInvoice.total,
+        invoiceAmountDue: latestInvoice.amount_due,
         invoiceStatus: latestInvoice.status,
-        paymentIntentId: latestInvoice.payment_intent?.id,
         hasConfirmationSecret: !!latestInvoice.confirmation_secret,
+        confirmationSecretType: typeof latestInvoice.confirmation_secret,
         hasPaymentIntent: !!latestInvoice.payment_intent,
+        hasSetupIntent: !!latestInvoice.setup_intent,
       });
       return NextResponse.json(
         { error: "Failed to create payment intent - no client secret available" },
