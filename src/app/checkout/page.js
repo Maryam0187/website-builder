@@ -184,13 +184,13 @@ function CheckoutContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#040b1a] via-[#071227] to-[#0a1a35] py-12 px-4">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-white">Complete Your Order</h1>
           <p className="mt-2 text-blue-100/85">Secure payment powered by Stripe</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-[minmax(300px,400px),1fr] max-w-5xl mx-auto">
           {/* Order Summary */}
           <div className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-6 h-fit">
             <h2 className="text-lg font-semibold text-white mb-4">Order Summary</h2>
@@ -238,8 +238,8 @@ function CheckoutContent() {
           </div>
 
           {/* Payment Form */}
-          <div className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-6">
-            <h2 className="text-lg font-semibold text-white mb-4">Payment Details</h2>
+          <div className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-8 lg:p-10 w-full max-w-[640px] mx-auto lg:mx-0">
+            <h2 className="text-lg font-semibold text-white mb-6">Payment Details</h2>
             
             <Elements stripe={stripePromise} options={options}>
               <CheckoutForm

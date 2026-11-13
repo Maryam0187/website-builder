@@ -25,13 +25,16 @@ export async function POST(request) {
   const rateCheck = await applyRateLimit(request, rateLimiters.checkout, 'checkout-session', user.id);
   if (rateCheck.limited) return rateCheck.response;
 
-  // Block Pakistan from Stripe
-  const userRegion = user.region || "usa";
-  if (!isStripeSupported(userRegion)) {
+  // Enforce region-based Stripe access
+  const { validateStripeAccess } = await import("@/lib/region-detection");
+  const regionCheck = validateStripeAccess(user);
+  if (!regionCheck.allowed) {
+    console.log(`Blocked Stripe access for user ${user.id} from region ${regionCheck.region}`);
     return NextResponse.json({
-      error: "Stripe payments not available in your region. Please contact us for payment options.",
-      region: userRegion,
-    }, { status: 400 });
+      error: regionCheck.error,
+      region: regionCheck.region,
+      requiresContact: true,
+    }, { status: 403 });
   }
 
   try {
