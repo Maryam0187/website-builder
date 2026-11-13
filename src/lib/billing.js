@@ -2161,14 +2161,18 @@ export async function subscribeWithSavedCard(userId, planId = "starter") {
   const liveCount = await countLiveSitesByOwner(userId);
   const quantity = Math.max(1, liveCount);
 
+  // Create Product first, then Price with product ID
+  const product = await stripe.products.create({
+    name: `Easy Website — ${plan.name}`,
+    metadata: { planId: plan.id },
+  });
+
   const price = await stripe.prices.create({
     currency: BILLING_CURRENCY,
     unit_amount: plan.priceCents,
     recurring: { interval: "month" },
-    product_data: {
-      name: `Easy Website — ${plan.name}`,
-      metadata: { planId: plan.id },
-    },
+    product: product.id, // Use product ID for subscriptions
+    metadata: { planId: plan.id },
   });
 
   const subscription = await stripe.subscriptions.create({

@@ -70,26 +70,57 @@ export async function POST(request) {
       ? plan.additionalPriceCents
       : plan.priceCents;
 
-    // Create subscription with payment_behavior=default_incomplete
-    // This creates a subscription in 'incomplete' status with an attached payment intent
+    // Get or create Stripe Price ID
+    // Try to load from pricing_configs if available
+    const { getCachedPricing } = await import("@/lib/pricing-cache");
+    const pricing = await getCachedPricing();
+    const pricingConfig = pricing[userRegion]?.[planId];
+    
+    let priceId = null;
+    if (pricingConfig?.stripePriceIds) {
+      priceId = mode === "buy-slot" 
+        ? pricingConfig.stripePriceIds.extra
+        : pricingConfig.stripePriceIds.first;
+    }
+
+    // If no stored Price ID, create Product and Price on-demand
+    if (!priceId) {
+      const productName = mode === "buy-slot"
+        ? `${plan.name} — Additional Website`
+        : `Easy Website — ${plan.name}`;
+      
+      // Create Product first
+      const product = await stripe.products.create({
+        name: productName,
+        description: mode === "buy-slot"
+          ? `Additional website on your ${plan.name} plan.`
+          : plan.description,
+        tax_code: "txcd_10103001",
+        metadata: { 
+          planId: plan.id,
+          mode: mode === "buy-slot" ? "extra" : "first"
+        },
+      });
+
+      // Create Price with Product ID (NOT product_data)
+      const price = await stripe.prices.create({
+        currency: "usd",
+        unit_amount: amount,
+        recurring: { interval: "month" },
+        product: product.id, // Use product ID for subscriptions
+        metadata: {
+          planId: plan.id,
+          mode: mode === "buy-slot" ? "extra" : "first"
+        },
+      });
+
+      priceId = price.id;
+    }
+
+    // Create subscription with the Price ID
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [{
-        price_data: {
-          currency: "usd",
-          unit_amount: amount,
-          recurring: { interval: "month" },
-          product_data: {
-            name: mode === "buy-slot"
-              ? `${plan.name} — additional website`
-              : `Easy Website — ${plan.name}`,
-            description: mode === "buy-slot"
-              ? `Additional website on your ${plan.name} plan. ${plan.additionalPriceLabel || plan.priceLabel} per month.`
-              : `${plan.description}`,
-            tax_code: "txcd_10103001",
-          },
-        },
-      }],
+      items: [{ price: priceId }],
       payment_behavior: "default_incomplete",
       payment_settings: {
         payment_method_types: ["card"],
