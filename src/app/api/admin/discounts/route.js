@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/admin-auth";
 import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 import {
@@ -19,7 +19,10 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
  */
 export async function GET(request) {
   try {
-    const user = await getUser(request);
+    const user = await requireUser(["admin"]);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     requireAdmin(user);
 
     // Rate limit: 100 requests per minute per admin
@@ -61,7 +64,10 @@ export async function GET(request) {
  */
 export async function POST(request) {
   try {
-    const user = await getUser(request);
+    const user = await requireUser(["admin"]);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     requireAdmin(user);
     
     // Rate limit: 100 requests per minute per admin
