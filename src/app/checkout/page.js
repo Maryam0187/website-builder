@@ -9,6 +9,7 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
+import RegionSelector, { RegionBanner } from "@/components/RegionSelector";
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
 const stripePromise = PUBLISHABLE_KEY ? loadStripe(PUBLISHABLE_KEY) : null;
@@ -89,10 +90,26 @@ function CheckoutContent() {
   const [clientSecret, setClientSecret] = useState("");
   const [planDetails, setPlanDetails] = useState(null);
   const [error, setError] = useState("");
+  const [region, setRegion] = useState("usa");
+  const [requiresContact, setRequiresContact] = useState(false);
 
   const planId = searchParams.get("planId") || "starter";
   const slotPlanId = searchParams.get("slotPlanId");
   const mode = searchParams.get("mode") || "subscribe"; // subscribe | buy-slot
+  
+  // Detect region on mount
+  useEffect(() => {
+    fetch("/api/region/detect")
+      .then(r => r.json())
+      .then(data => {
+        if (data.region) {
+          setRegion(data.region);
+          // Check if this region requires contact
+          setRequiresContact(data.region === 'pakistan');
+        }
+      })
+      .catch(err => console.error("Region detection failed:", err));
+  }, []);
 
   useEffect(() => {
     async function initCheckout() {
@@ -182,12 +199,65 @@ function CheckoutContent() {
     },
   };
 
+  // Handle Pakistan users
+  if (requiresContact) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#040b1a] via-[#071227] to-[#0a1a35] py-12 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-bold text-white">Activation Required</h1>
+            <p className="mt-2 text-blue-100/85">Contact us to activate your plan</p>
+          </div>
+          
+          <RegionBanner region={region} />
+          
+          <div className="mt-8 rounded-2xl border border-white/10 bg-[#07122a]/80 p-8">
+            <p className="text-blue-100 mb-6">
+              Stripe payments are not available in Pakistan. We'll help you activate your {planId} plan with local payment methods like JazzCash or EasyPaisa.
+            </p>
+            
+            <button
+              onClick={() => router.push(`/activation-request?planId=${planId}`)}
+              className="w-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-6 py-3 font-semibold transition hover:from-cyan-400 hover:to-blue-500"
+            >
+              Submit Activation Request
+            </button>
+            
+            <button
+              onClick={() => router.push("/profile#plan")}
+              className="w-full mt-4 rounded-full border border-cyan-400/40 bg-cyan-500/15 px-6 py-3 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/25"
+            >
+              Return to Profile
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#040b1a] via-[#071227] to-[#0a1a35] py-12 px-4">
       <div className="max-w-6xl mx-auto">
-        <div className="mb-8 text-center">
+        <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-white">Complete Your Order</h1>
           <p className="mt-2 text-blue-100/85">Secure payment powered by Stripe</p>
+        </div>
+        
+        <div className="mb-6 flex justify-center">
+          <RegionSelector 
+            selectedRegion={region}
+            onRegionChange={async (newRegion) => {
+              setRegion(newRegion);
+              await fetch("/api/region/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ region: newRegion }),
+              });
+              if (newRegion === 'pakistan') {
+                setRequiresContact(true);
+              }
+            }}
+          />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(300px,400px),1fr] max-w-5xl mx-auto">

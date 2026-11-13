@@ -347,3 +347,26 @@ ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS stripe_extra_site_price_id_
 
 -- Track applied discount on users
 ALTER TABLE users ADD COLUMN IF NOT EXISTS applied_discount_id BIGINT NULL REFERENCES discounts(id) ON DELETE SET NULL;
+
+-- Activation requests for Pakistan and other contact-based regions
+CREATE TABLE IF NOT EXISTS activation_requests (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  plan_id TEXT NOT NULL,
+  site_id BIGINT NULL REFERENCES sites(id) ON DELETE SET NULL,
+  region TEXT NOT NULL,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  whatsapp TEXT NULL,
+  message TEXT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'contacted', 'activated', 'rejected')),
+  activated_by_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  activated_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_activation_requests_user_id ON activation_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_activation_requests_status ON activation_requests(status);
+CREATE INDEX IF NOT EXISTS idx_activation_requests_created_at ON activation_requests(created_at DESC);
