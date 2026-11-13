@@ -134,17 +134,47 @@ export async function POST(request) {
       },
     });
 
-    const paymentIntent = subscription.latest_invoice.payment_intent;
+    // Extract client secret - handle both old and new Stripe API versions
+    let clientSecret = null;
+    const latestInvoice = subscription.latest_invoice;
 
-    if (!paymentIntent || !paymentIntent.client_secret) {
+    if (!latestInvoice) {
+      console.error("Checkout session error: No latest_invoice on subscription", {
+        subscriptionId: subscription.id,
+        status: subscription.status,
+      });
       return NextResponse.json(
-        { error: "Failed to create payment intent" },
+        { error: "Subscription created but no invoice generated" },
+        { status: 500 }
+      );
+    }
+
+    // Try new API structure first (confirmation_secret on invoice)
+    if (latestInvoice.confirmation_secret) {
+      clientSecret = latestInvoice.confirmation_secret;
+    }
+    // Fall back to payment_intent.client_secret (older API versions)
+    else if (latestInvoice.payment_intent?.client_secret) {
+      clientSecret = latestInvoice.payment_intent.client_secret;
+    }
+
+    if (!clientSecret) {
+      console.error("Checkout session error: No client secret found", {
+        subscriptionId: subscription.id,
+        invoiceId: latestInvoice.id,
+        invoiceStatus: latestInvoice.status,
+        paymentIntentId: latestInvoice.payment_intent?.id,
+        hasConfirmationSecret: !!latestInvoice.confirmation_secret,
+        hasPaymentIntent: !!latestInvoice.payment_intent,
+      });
+      return NextResponse.json(
+        { error: "Failed to create payment intent - no client secret available" },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
-      clientSecret: paymentIntent.client_secret,
+      clientSecret,
       subscriptionId: subscription.id,
       plan: {
         id: plan.id,
@@ -158,10 +188,27 @@ export async function POST(request) {
       mode,
     });
   } catch (error) {
-    console.error("Checkout session creation error:", error);
+    // Log detailed Stripe error for debugging
+    console.error("Checkout session creation error:", {
+      type: error.type,
+      code: error.code,
+      message: error.message,
+      param: error.param,
+      statusCode: error.statusCode,
+      requestId: error.requestId,
+    });
+    
+    // Return the actual Stripe error message to help debug
+    const errorMessage = error.message || "Failed to create checkout session";
+    const debugInfo = process.env.NODE_ENV === "development" ? {
+      type: error.type,
+      code: error.code,
+      param: error.param,
+    } : {};
+    
     return NextResponse.json(
-      { error: error.message || "Failed to create checkout session" },
-      { status: 500 }
+      { error: errorMessage, ...debugInfo },
+      { status: error.statusCode || 500 }
     );
   }
 }
