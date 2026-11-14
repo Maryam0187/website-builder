@@ -63,6 +63,37 @@ export async function POST(request) {
       },
     });
 
+    let discountId = Number(paymentIntent.metadata?.discountId);
+    let subscriptionId = paymentIntent.metadata?.subscriptionId || null;
+    if (!discountId) {
+      const invoiceRef = paymentIntent.invoice;
+      const invoiceId = typeof invoiceRef === "string" ? invoiceRef : invoiceRef?.id;
+      if (invoiceId) {
+        try {
+          const invoice = await stripe.invoices.retrieve(invoiceId);
+          const subRef = invoice.subscription || invoice.parent?.subscription_details?.subscription;
+          const subId = typeof subRef === "string" ? subRef : subRef?.id;
+          if (subId) {
+            const sub = typeof subRef === "object" && subRef?.metadata
+              ? subRef
+              : await stripe.subscriptions.retrieve(subId);
+            discountId = Number(sub.metadata?.discountId);
+            subscriptionId = sub.id;
+          }
+        } catch (lookupError) {
+          console.warn("Could not read the discount from the invoice:", lookupError.message);
+        }
+      }
+    }
+    if (discountId) {
+      try {
+        const { redeemDiscount } = await import("@/lib/discounts");
+        await redeemDiscount(discountId, user.id, subscriptionId);
+      } catch (redeemError) {
+        console.error("Discount redemption failed:", redeemError);
+      }
+    }
+
     // The subscription webhooks will handle activating the plan
     // (invoice.paid, customer.subscription.created)
     // The subscription was already created in checkout-session with payment_behavior=default_incomplete

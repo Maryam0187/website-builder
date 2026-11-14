@@ -75,6 +75,8 @@ function mapUser(row) {
     stripeCustomerId: row.stripe_customer_id || null,
     stripeSubscriptionId: row.stripe_subscription_id || null,
     siteSlots: Math.max(1, Number(row.site_slots) || 1),
+    region: row.region || "usa",
+    regionLocked: Boolean(row.region_locked),
     totpEnabled: Boolean(row.totp_enabled),
     totpSecret: row.totp_secret || null,
     totpPendingSecret: row.totp_pending_secret || null,
@@ -105,6 +107,8 @@ export function publicUser(user) {
     stripeCustomerId: user.stripeCustomerId || null,
     stripeSubscriptionId: user.stripeSubscriptionId || null,
     siteSlots: Math.max(1, Number(user.siteSlots) || 1),
+    region: user.region || "usa",
+    regionLocked: Boolean(user.regionLocked),
     totpEnabled: Boolean(user.totpEnabled),
     totpAskLife: normalizeTotpAskLife(user.totpAskLife),
   };

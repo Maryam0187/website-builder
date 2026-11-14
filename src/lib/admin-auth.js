@@ -5,15 +5,15 @@ import { query } from "./db";
  * Format: ADMIN_EMAILS=admin@example.com,other@example.com
  */
 export function isAdmin(user) {
-  if (!user?.email) return false;
-  
-  const adminEmails = (process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map(e => e.trim().toLowerCase())
+  if (!user) return false;
+  if (user.role === "admin") return true;
+
+  const adminEmails = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
-  
-  if (adminEmails.length === 0) return false;
-  
+
+  if (!user.email || adminEmails.length === 0) return false;
   return adminEmails.includes(user.email.toLowerCase());
 }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLaunchPromotion } from "@/lib/discounts";
+import { getLaunchPromotion, publicOffer } from "@/lib/discounts";
 
 /**
  * GET /api/pricing/launch-promotion
@@ -12,6 +12,7 @@ export async function GET() {
     if (!promotion) {
       return NextResponse.json({
         available: false,
+        offer: null,
         countdown: null,
         spotsRemaining: null,
         totalSpots: null,
@@ -41,8 +42,10 @@ export async function GET() {
       totalSpots = promotion.max_redemptions;
     }
 
+    const offer = publicOffer(promotion);
     return NextResponse.json({
       available: true,
+      offer,
       countdown,
       spotsRemaining,
       totalSpots,
@@ -51,6 +54,8 @@ export async function GET() {
         valueType: promotion.value_type,
         valueAmount: promotion.value_amount,
         durationMonths: promotion.duration_months,
+        applicablePlans: offer.applicablePlans,
+        billingInterval: offer.billingInterval,
       },
     });
     

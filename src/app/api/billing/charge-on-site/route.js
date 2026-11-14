@@ -25,7 +25,10 @@ export async function POST(request) {
   try {
     if (action === "subscribe") {
       const planId = String(body.planId || "starter").trim();
-      const result = await subscribeWithSavedCard(user.id, planId);
+      const result = await subscribeWithSavedCard(user.id, planId, {
+        billingInterval: body.billingInterval === "yearly" ? "yearly" : "monthly",
+        couponCode: body.couponCode,
+      });
       
       return NextResponse.json({
         user: result.user,

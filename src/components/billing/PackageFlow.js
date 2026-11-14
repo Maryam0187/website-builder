@@ -1,12 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import PlanChangeDialog from "@/components/billing/PlanChangeDialog";
 import AddPaymentMethodDialog from "@/components/billing/AddPaymentMethodDialog";
 import ProContactDialog from "@/components/billing/ProContactDialog";
+import RegionSelector from "@/components/RegionSelector";
+import { ALL_REGIONS } from "@/lib/region-detection";
+import {
+  formatPkr,
+  formatRegionAmount,
+  offerPhrase,
+  pickOffer,
+  savingsFor,
+  withRegionPricing,
+} from "@/lib/plan-price-label";
 
-function formatMoney(cents) {
+function formatMoney(cents, regionId = "usa") {
+  if (regionId === "pakistan") return formatPkr(cents);
   return `$${((Number(cents) || 0) / 100).toFixed(0)}`;
 }
 
@@ -70,7 +81,18 @@ function AddonCard({ item, badge, actionLabel, actionHref, onAction, busy, disab
     >
       <p className="text-xs uppercase tracking-wide text-blue-200/70">{badge}</p>
       <h4 className="mt-2 text-lg font-semibold text-white">{item.name}</h4>
+      {item.compareAtLabel ? (
+        <p className="mt-1 text-sm text-blue-200/60 line-through">{item.compareAtLabel}</p>
+      ) : null}
       <p className="mt-1 text-2xl font-semibold text-cyan-200">{item.priceLabel}</p>
+      {item.yearlyNote ? (
+        <p className="mt-2 inline-flex w-fit rounded-full bg-cyan-400 px-3 py-1 text-sm font-bold text-[#041018]">
+          {item.yearlyNote}
+        </p>
+      ) : null}
+      {item.offerNote ? (
+        <p className="mt-1 text-xs font-medium text-cyan-200">{item.offerNote}</p>
+      ) : null}
       {item.additionalPriceLabel && item.additionalPriceLabel !== "—" ? (
         <p className="mt-1 text-xs text-blue-200/80">
           Additional website · {item.additionalPriceLabel}
@@ -116,13 +138,79 @@ export default function PackageFlow({
   onAction,
   onContactUs,
   onCreateSiteRequest,
+  onRegionConfirmed,
+  region = "usa",
+  regionLocked = false,
+  regionPrices = null,
+  regions = null,
   view = "all",
 }) {
+  const [draftRegion, setDraftRegion] = useState(region || "usa");
+  const [regionConfirmed, setRegionConfirmed] = useState(Boolean(regionLocked));
+  const [regionBusy, setRegionBusy] = useState(false);
+  const [regionNotice, setRegionNotice] = useState("");
   const [showSlotPicker, setShowSlotPicker] = useState(false);
   const [planChangePrompt, setPlanChangePrompt] = useState(null);
   const [showAddPaymentDialog, setShowAddPaymentDialog] = useState(false);
   const [showProContactDialog, setShowProContactDialog] = useState(false);
   const [pendingPurchase, setPendingPurchase] = useState(null);
+  const [billingInterval, setBillingInterval] = useState("yearly");
+  const [launchOffer, setLaunchOffer] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/pricing/launch-promotion")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setLaunchOffer(data.offer || null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setDraftRegion(region || "usa");
+  }, [region]);
+
+  useEffect(() => {
+    if (regionLocked) setRegionConfirmed(true);
+  }, [regionLocked]);
+
+  function requireConfirmedRegion() {
+    if (regionLocked || regionConfirmed) return true;
+    setRegionNotice("Confirm your region above before choosing a plan.");
+    document.getElementById("plan-region")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return false;
+  }
+
+  async function confirmRegion() {
+    setRegionBusy(true);
+    setRegionNotice("");
+    try {
+      const res = await fetch("/api/region/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ region: draftRegion }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not save region");
+      setRegionConfirmed(true);
+      onRegionConfirmed?.(draftRegion);
+      setRegionNotice(
+        draftRegion === "pakistan"
+          ? "Pakistan confirmed. Choose a plan to request activation."
+          : "Region confirmed. Choose a plan below."
+      );
+    } catch (err) {
+      setRegionConfirmed(false);
+      setRegionNotice(err.message || "Could not save region");
+    } finally {
+      setRegionBusy(false);
+    }
+  }
+
   const subStatus = billing?.subscriptionStatus || "none";
   const paidActive = Boolean(billing?.subscriptionActive);
   const allPlans = billing?.plans || [];
@@ -144,10 +232,34 @@ export default function PackageFlow({
     allPlans.find((p) => p.id === currentPlanId) || allPlans.find((p) => p.id === "free");
   const currentRank = planRank(currentPlan);
   const monthlyPlanIds = new Set(["starter", "custom", "domain", "pro"]);
-  const shopPackages =
+  const purchaseExtra = {
+    billingInterval,
+    couponCode: "",
+  };
+  const shopPackages = (
     billing?.shopPackages?.length > 0
       ? billing.shopPackages
-      : allPlans.filter((p) => p.id === "free" || monthlyPlanIds.has(p.id));
+      : allPlans.filter((p) => p.id === "free" || monthlyPlanIds.has(p.id))
+  ).map((plan) => {
+    const priced = withRegionPricing(plan, draftRegion, regionPrices, billingInterval);
+    if (!priced || priced.priceLabel === "Contact us" || !(Number(priced.priceCents) > 0)) return priced;
+    const offer = pickOffer(launchOffer, null, priced.id, billingInterval, priced.priceCents);
+    const saved = savingsFor(priced.priceCents, offer);
+    if (!offer || saved <= 0) return priced;
+    const finalCents = Math.max(0, priced.priceCents - saved);
+    const period = billingInterval === "yearly" ? "year" : "month";
+    return {
+      ...priced,
+      compareAtLabel: priced.priceLabel,
+      priceCents: finalCents,
+      priceLabel: formatRegionAmount(finalCents, priced.currency || "USD", {
+        per: finalCents > 0 ? period : null,
+      }),
+      offerNote: offerPhrase(offer),
+    };
+  });
+  const pricedCurrentPlan = withRegionPricing(currentPlan, draftRegion, regionPrices);
+  const pakistanPricing = draftRegion === "pakistan";
   const planRankById = { starter: 1, custom: 2, live: 2, domain: 3, pro: 4 };
 
   const statusLabel = canceling ? "Cancels soon" : paidActive ? "Active" : "Free";
@@ -157,6 +269,49 @@ export default function PackageFlow({
     <div className="space-y-6">
       {showPlan ? (
         <>
+          <div className="grid gap-4 lg:grid-cols-2">
+          <div id="plan-region" className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-5">
+            <p className="text-xs uppercase tracking-wide text-blue-200/70">Step 1</p>
+            <h3 className="mt-1 text-lg font-semibold text-white">Confirm your region</h3>
+            <p className="mt-1 text-sm text-blue-100">
+              Payment and pricing use this region. Confirm it, then choose a package.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {regionLocked ? (
+                <p className="rounded-lg border border-white/15 bg-white px-4 py-2 text-sm font-medium text-gray-900">
+                  {(regions?.length ? regions : ALL_REGIONS).find((item) => item.id === draftRegion)?.name || draftRegion}
+                </p>
+              ) : (
+                <RegionSelector
+                  selectedRegion={draftRegion}
+                  regions={regions}
+                  onRegionChange={(nextRegion) => {
+                    setDraftRegion(nextRegion);
+                    setRegionConfirmed(false);
+                    setRegionNotice("");
+                  }}
+                />
+              )}
+              {regionLocked ? (
+                <p className="text-sm text-blue-200/80">Locked after your first subscription.</p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={regionBusy || regionConfirmed}
+                  onClick={confirmRegion}
+                  className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
+                >
+                  {regionBusy ? "Saving…" : regionConfirmed ? "Region confirmed" : "Confirm region"}
+                </button>
+              )}
+            </div>
+            {regionNotice ? (
+              <p className={`mt-3 text-sm ${regionConfirmed ? "text-cyan-100" : "text-amber-200"}`}>
+                {regionNotice}
+              </p>
+            ) : null}
+          </div>
+
           <div
             className={`rounded-2xl border p-5 ${
               paidActive
@@ -176,8 +331,10 @@ export default function PackageFlow({
                   {canceling
                     ? `Keeps working until ${formatDate(billing?.currentPeriodEnd)}, then Free.`
                     : paidActive
-                      ? `${billing?.priceLabel || ""} · Next period ${formatDate(billing?.currentPeriodEnd)}`
-                      : "Default package · $0 · 1 website · all templates · switch anytime. Cart & checkout is an add-on — contact us."}
+                      ? `${pricedCurrentPlan?.priceLabel || billing?.priceLabel || ""} · Next period ${formatDate(billing?.currentPeriodEnd)}`
+                      : pakistanPricing
+                        ? "Default package · Rs 0 · 1 website · all templates · switch anytime. Cart & checkout is an add-on — contact us."
+                        : "Default package · $0 · 1 website · all templates · switch anytime. Cart & checkout is an add-on — contact us."}
                 </p>
                 <p className="mt-2 text-xs text-blue-200/80">
                   Includes: {featureList(billing?.features).join(" · ") || "Free editor"}
@@ -208,22 +365,75 @@ export default function PackageFlow({
               </span>
             </div>
           </div>
+          </div>
 
           {showPlan && message && !showBilling ? (
             <p className="text-sm text-cyan-200">{message}</p>
           ) : null}
 
-          <div className="space-y-3">
-            <div>
+          <div>
+            <div className="max-w-xl">
               <h3 className="text-lg font-semibold text-white">Packages</h3>
-              <p className="mt-1 text-sm text-blue-100">
-                Everyone starts on Free. Subscribe to Starter ($9), Custom ($19), Domain ($29), or
-                Pro + PWA ($39) to publish and host. Already subscribed? Upgrade charges only the
-                difference on your saved card. Downgrade switches plans with no charge now — the
-                lower price starts next month. Add another website available at discounted monthly prices.
+              <p className="mt-1 text-sm leading-6 text-blue-100/75">
+                {pakistanPricing
+                  ? "Everyone starts on Free. Prices are in PKR and Pakistan plans are activated with local payment. Pro + PWA is contact us."
+                  : "Everyone starts on Free. Prices are on each plan below. Pro + PWA is contact us."}
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="mt-5 flex flex-col items-center">
+              <div
+                role="group"
+                aria-label="Billing period"
+                className="inline-flex h-10 items-center rounded-full border border-white/10 bg-[#040b1a] p-1"
+              >
+                <button
+                  type="button"
+                  onClick={() => setBillingInterval("monthly")}
+                  className={`h-8 rounded-full px-4 text-sm font-semibold leading-none ${
+                    billingInterval === "monthly" ? "bg-white text-[#041018]" : "text-blue-100 hover:text-white"
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingInterval("yearly")}
+                  className={`inline-flex h-8 items-center gap-2 rounded-full px-4 text-sm font-semibold leading-none ${
+                    billingInterval === "yearly" ? "bg-white text-[#041018]" : "text-blue-100 hover:text-white"
+                  }`}
+                >
+                  Yearly
+                  <span
+                    className={`text-[10px] font-bold leading-none tracking-wide whitespace-nowrap ${
+                      billingInterval === "yearly" ? "text-cyan-700" : "text-cyan-300"
+                    }`}
+                  >
+                    2 months free
+                  </span>
+                </button>
+              </div>
+              <p className="mt-2 h-4 text-xs leading-4 text-cyan-200/80">
+                {billingInterval === "yearly" ? "Pay for 10 months and get the full year." : ""}
+              </p>
+            </div>
+            {launchOffer?.valueType ? (
+              <div className="mt-4 max-w-xl rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-50">
+                <p className="font-semibold">{launchOffer.name}</p>
+                <p className="mt-1 text-cyan-100">
+                  {offerPhrase(launchOffer)}
+                  {launchOffer.daysRemaining != null
+                    ? ` · Offer ends in ${launchOffer.daysRemaining} day${launchOffer.daysRemaining === 1 ? "" : "s"}`
+                    : ""}
+                  {launchOffer.spotsRemaining != null
+                    ? ` · ${launchOffer.spotsRemaining} of ${launchOffer.totalSpots} left`
+                    : ""}
+                  {launchOffer.billingInterval
+                    ? ` · ${launchOffer.billingInterval} billing`
+                    : ""}
+                </p>
+              </div>
+            ) : null}
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {shopPackages.map((item) => {
                 if (item.id === "free" || item.billingType === "included") {
                   const onFree = !paidActive;
@@ -259,7 +469,7 @@ export default function PackageFlow({
                 const isUpgrade = paidActive && itemRank > currentRank;
                 const isDowngrade = paidActive && itemRank < currentRank;
                 const liveQty = Math.max(1, Number(billing?.liveSites) || 1);
-                const currentCents = Number(currentPlan?.priceCents) || 0;
+                const currentCents = Number(pricedCurrentPlan?.priceCents) || 0;
                 const itemCents = Number(item.priceCents) || 0;
                 const differenceCents = Math.max(0, (itemCents - currentCents) * liveQty);
                 let actionLabel = null;
@@ -267,7 +477,7 @@ export default function PackageFlow({
                   if (isCurrent && canceling) {
                     actionLabel = "Keep this plan";
                   } else if (isUpgrade) {
-                    actionLabel = `Upgrade · +${formatMoney(differenceCents)} now`;
+                    actionLabel = `Upgrade · +${formatMoney(differenceCents, draftRegion)} now`;
                   } else if (!isCurrent && !canceling) {
                     actionLabel = isDowngrade
                       ? `Switch · ${item.priceLabel}`
@@ -278,12 +488,13 @@ export default function PackageFlow({
                   <AddonCard
                     key={item.id}
                     item={item}
-                    badge={isUpgrade ? "Upgrade" : isDowngrade ? "Downgrade" : "Monthly"}
+                    badge={isUpgrade ? "Upgrade" : isDowngrade ? "Downgrade" : billingInterval === "yearly" ? "Yearly" : "Monthly"}
                     current={isCurrent && !canceling}
                     actionLabel={actionLabel}
                     busy={busy}
                     disabled={!stripe}
                     onAction={() => {
+                      if (!requireConfirmedRegion()) return;
                       if (isCurrent && canceling) {
                         setPlanChangePrompt({
                           planId: item.id,
@@ -297,10 +508,8 @@ export default function PackageFlow({
                       if (isUpgrade) {
                         const card = billing?.cardOnFile;
                         const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
-                        if (!hasCard) {
-                          // MARKER_UPGRADE_NO_CARD
-                          // No card → always redirect to Stripe Checkout
-                          onAction("checkout", item.id);
+                        if (!hasCard || billingInterval === "yearly") {
+                          onAction(billingInterval === "yearly" && hasCard ? "subscribe" : "checkout", item.id, purchaseExtra);
                           return;
                         }
                         setPlanChangePrompt({
@@ -308,11 +517,11 @@ export default function PackageFlow({
                           mode: "upgrade",
                           title: `Upgrade to ${item.name}?`,
                           description: canceling
-                            ? `We’ll stop the cancellation. Confirm to charge ${formatMoney(differenceCents)} now on your saved card (the difference). Starting next month you’ll be billed ${item.priceLabel} (additional sites ${item.additionalPriceLabel || "discounted"}).`
-                            : `Confirm to charge ${formatMoney(differenceCents)} now on your saved card (the difference). Starting next month you’ll be billed ${item.priceLabel} (additional sites ${item.additionalPriceLabel || "discounted"}).`,
-                          confirmLabel: `Charge ${formatMoney(differenceCents)} & upgrade`,
+                            ? `We’ll stop the cancellation. Confirm to charge ${formatMoney(differenceCents, draftRegion)} now on your saved card (the difference). Starting next month you’ll be billed ${item.priceLabel} (additional sites ${item.additionalPriceLabel || "discounted"}).`
+                            : `Confirm to charge ${formatMoney(differenceCents, draftRegion)} now on your saved card (the difference). Starting next month you’ll be billed ${item.priceLabel} (additional sites ${item.additionalPriceLabel || "discounted"}).`,
+                          confirmLabel: `Charge ${formatMoney(differenceCents, draftRegion)} & upgrade`,
                           requireChargeConfirm: true,
-                          chargeConfirmLabel: `I confirm charging ${formatMoney(differenceCents)} to ${card.label}`,
+                          chargeConfirmLabel: `I confirm charging ${formatMoney(differenceCents, draftRegion)} to ${card.label}`,
                           cardLabel: card.label,
                           changeCardOnly: false,
                         });
@@ -331,16 +540,15 @@ export default function PackageFlow({
                       const card = billing?.cardOnFile;
                       const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
                       if (!hasCard) {
-                        // No card → always redirect to Stripe Checkout
-                        onAction("checkout", item.id);
+                        onAction("checkout", item.id, purchaseExtra);
                         return;
                       }
-                      // Has card, show confirmation
+                      const periodWord = billingInterval === "yearly" ? "yearly" : "monthly";
                       setPlanChangePrompt({
                         planId: item.id,
                         mode: "subscribe",
                         title: `Subscribe to ${item.name}?`,
-                        description: `Confirm to charge ${item.priceLabel} now on your saved card. You'll be billed monthly.`,
+                        description: `Confirm to charge ${item.priceLabel} now on your saved card. You'll be billed ${periodWord}.`,
                         confirmLabel: `Subscribe · ${item.priceLabel}`,
                         requireChargeConfirm: true,
                         chargeConfirmLabel: `I confirm charging ${item.priceLabel} to ${card.label}`,
@@ -408,10 +616,10 @@ export default function PackageFlow({
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {[
-                        { id: "free",    name: "Free",      price: "$5/mo",  hint: "Draft only · no live hosting" },
-                        { id: "starter", name: "Starter",   price: "$7/mo",  hint: "Live · auto Technonaire address" },
-                        { id: "custom",  name: "Custom",    price: "$15/mo", hint: "Live · chosen Technonaire address" },
-                        { id: "domain",  name: "Domain",    price: "$24/mo", hint: "Live · use your own domain" },
+                        { id: "free",    name: "Free",      price: shopPackages.find((plan) => plan.id === "free")?.additionalPriceLabel || "$5/mo",  hint: "Draft only · no live hosting" },
+                        { id: "starter", name: "Starter",   price: shopPackages.find((plan) => plan.id === "starter")?.additionalPriceLabel || "$7/mo",  hint: "Live · auto Technonaire address" },
+                        { id: "custom",  name: "Custom",    price: shopPackages.find((plan) => plan.id === "custom")?.additionalPriceLabel || "$15/mo", hint: "Live · chosen Technonaire address" },
+                        { id: "domain",  name: "Domain",    price: shopPackages.find((plan) => plan.id === "domain")?.additionalPriceLabel || "$24/mo", hint: "Live · use your own domain" },
                       ].map((slot) => {
                         const isCurrent = currentPlanId === slot.id;
                         return (
@@ -420,6 +628,7 @@ export default function PackageFlow({
                             type="button"
                             disabled={busy}
                             onClick={() => {
+                              if (!requireConfirmedRegion()) return;
                               setShowSlotPicker(false);
                               const card = billing?.cardOnFile;
                               const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
@@ -628,6 +837,7 @@ export default function PackageFlow({
             onAction("portal");
             return;
           }
+          if (!requireConfirmedRegion()) return;
           if (planChangePrompt?.mode === "buy-slot") {
             const slotPlanId = planChangePrompt.slotPlanId;
             setPlanChangePrompt(null);
@@ -636,7 +846,7 @@ export default function PackageFlow({
           }
           const planId = planChangePrompt?.planId;
           setPlanChangePrompt(null);
-          if (planId) onAction("subscribe", planId);
+          if (planId) onAction("subscribe", planId, purchaseExtra);
         }}
       />
 
@@ -653,9 +863,10 @@ export default function PackageFlow({
         busy={busy}
         onSuccess={() => {
           setShowAddPaymentDialog(false);
+          if (!requireConfirmedRegion()) return;
           // After card is added, automatically retry the purchase
           if (pendingPurchase?.action === "subscribe") {
-            onAction("subscribe-onsite", pendingPurchase.planId);
+            onAction("subscribe-onsite", pendingPurchase.planId, purchaseExtra);
           } else if (pendingPurchase?.action === "buy-site-slot") {
             onAction("buy-site-slot-onsite", pendingPurchase.slotPlanId);
           }

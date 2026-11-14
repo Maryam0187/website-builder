@@ -71,9 +71,23 @@ export async function GET(request) {
       ? (await listSitesByOwner(user.id)).map(mapOwnerSite)
       : [];
 
+  let regionPrices = null;
+  let regions = [];
+  try {
+    const { getCachedPricing } = await import("@/lib/pricing-cache");
+    const { listBillingRegions } = await import("@/lib/billing-regions");
+    regionPrices = await getCachedPricing();
+    const listed = await listBillingRegions();
+    regions = listed.filter((item) => item.enabled || item.id === fresh.region);
+  } catch (err) {
+    console.error("Region pricing load failed:", err);
+  }
+
   return NextResponse.json({
     user: fresh,
     billing: billingPublicFields(fresh, { sitesUsed, liveSites, purchasedAddonIds, cardOnFile }),
+    regionPrices,
+    regions,
     invoices: await listInvoicesForUser(user.id),
     sites: ownerSites,
     site: site ? mapOwnerSite(site) : null,

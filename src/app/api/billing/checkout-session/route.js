@@ -3,7 +3,6 @@ import { requireUser } from "@/lib/auth";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
 import { getPlan } from "@/lib/billing";
 import { getUserById } from "@/lib/auth";
-import { isStripeSupported } from "@/lib/pricing";
 
 /**
  * POST /api/billing/checkout-session
@@ -25,14 +24,17 @@ export async function POST(request) {
   const rateCheck = await applyRateLimit(request, rateLimiters.checkout, 'checkout-session', user.id);
   if (rateCheck.limited) return rateCheck.response;
 
-  // Enforce region-based Stripe access
-  const { validateStripeAccess } = await import("@/lib/region-detection");
-  const regionCheck = validateStripeAccess(user);
-  if (!regionCheck.allowed) {
-    console.log(`Blocked Stripe access for user ${user.id} from region ${regionCheck.region}`);
+  const { getBillingRegion, regionAllowsStripe } = await import("@/lib/billing-regions");
+  const { getRegionName } = await import("@/lib/region-detection");
+  const userRegion = user.region || "usa";
+  const regionRow = await getBillingRegion(userRegion);
+  if (!(await regionAllowsStripe(userRegion))) {
+    const name = regionRow?.name || getRegionName(userRegion);
     return NextResponse.json({
-      error: regionCheck.error,
-      region: regionCheck.region,
+      error: regionRow && !regionRow.enabled
+        ? `${name} is not available for checkout.`
+        : `Stripe payments are not available in ${name}. Please contact us for payment options.`,
+      region: userRegion,
       requiresContact: true,
     }, { status: 403 });
   }
@@ -41,6 +43,8 @@ export async function POST(request) {
     const body = await request.json();
     const planId = String(body.planId || "starter").trim();
     const mode = String(body.mode || "subscribe").trim(); // subscribe | buy-slot
+    const billingInterval = body.billingInterval === "yearly" ? "yearly" : "monthly";
+    const couponCode = String(body.couponCode || "").trim();
 
     const plan = getPlan(planId);
     if (!plan || !plan.priceCents || plan.priceCents <= 0) {
@@ -68,24 +72,33 @@ export async function POST(request) {
       );
     }
 
-    // Determine amount (first site vs additional site)
-    const amount = mode === "buy-slot" && plan.additionalPriceCents
-      ? plan.additionalPriceCents
-      : plan.priceCents;
-
-    // Get or create Stripe Price ID
-    // Try to load from pricing_configs if available
-    const { getCachedPricing } = await import("@/lib/pricing-cache");
-    const pricing = await getCachedPricing();
-    const userRegion = regionCheck.region;
-    const pricingConfig = pricing[userRegion]?.[planId];
-    
-    let priceId = null;
-    if (pricingConfig?.stripePriceIds) {
-      priceId = mode === "buy-slot" 
-        ? pricingConfig.stripePriceIds.extra
-        : pricingConfig.stripePriceIds.first;
+    const { quotePlanCharge } = await import("@/lib/checkout-quote");
+    const { formatRegionAmount } = await import("@/lib/plan-price-label");
+    const quoted = await quotePlanCharge({
+      region: userRegion,
+      planId,
+      mode,
+      billingInterval,
+      couponCode,
+      fallbackCents: mode === "buy-slot" ? plan.additionalPriceCents : plan.priceCents,
+    });
+    if (quoted.couponError) {
+      return NextResponse.json({ error: quoted.couponError }, { status: 400 });
     }
+    if (quoted.originalAmount == null || quoted.originalAmount < 0) {
+      return NextResponse.json({ error: "This plan has no price for that billing period" }, { status: 400 });
+    }
+    if (quoted.discount && !quoted.stripeCouponId) {
+      return NextResponse.json(
+        { error: "Could not apply the discount in Stripe. Try again." },
+        { status: 502 }
+      );
+    }
+
+    const amount = quoted.originalAmount;
+    const priceCurrency = quoted.currency || "usd";
+    const period = quoted.interval === "yearly" ? "year" : "month";
+    let priceId = quoted.stripePriceId;
 
     // If no stored Price ID, create Product and Price on-demand
     if (!priceId) {
@@ -108,24 +121,39 @@ export async function POST(request) {
 
       // Create Price with Product ID (NOT product_data)
       const price = await stripe.prices.create({
-        currency: "usd",
+        currency: priceCurrency,
         unit_amount: amount,
-        recurring: { interval: "month" },
-        product: product.id, // Use product ID for subscriptions
+        recurring: { interval: period },
+        product: product.id,
         metadata: {
           planId: plan.id,
-          mode: mode === "buy-slot" ? "extra" : "first"
+          mode: mode === "buy-slot" ? "extra" : "first",
+          billingInterval: quoted.interval,
         },
       });
 
       priceId = price.id;
     }
 
-    // Create subscription with the Price ID
-    // Use latest_invoice for expansion (works across API versions)
+    if (body.replaceSubscriptionId) {
+      try {
+        const previous = await stripe.subscriptions.retrieve(String(body.replaceSubscriptionId));
+        const previousCustomer = typeof previous.customer === "string" ? previous.customer : previous.customer?.id;
+        if (
+          previousCustomer === customerId
+          && (previous.status === "incomplete" || previous.status === "incomplete_expired")
+        ) {
+          await stripe.subscriptions.cancel(previous.id);
+        }
+      } catch (replaceError) {
+        console.warn("Could not replace the previous checkout:", replaceError.message);
+      }
+    }
+
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: priceId }],
+      discounts: quoted.stripeCouponId ? [{ coupon: quoted.stripeCouponId }] : undefined,
       payment_behavior: "default_incomplete",
       payment_settings: {
         payment_method_types: ["card"],
@@ -136,6 +164,8 @@ export async function POST(request) {
         userId: String(freshUser.id),
         planId: plan.id,
         mode,
+        billingInterval: quoted.interval,
+        discountId: quoted.discount?.id ? String(quoted.discount.id) : "",
       },
     });
 
@@ -154,6 +184,55 @@ export async function POST(request) {
       );
     }
 
+    const dueLabel = formatRegionAmount(quoted.finalAmount, priceCurrency.toUpperCase(), {
+      per: quoted.finalAmount > 0 ? period : null,
+    });
+    const fullLabel = formatRegionAmount(quoted.originalAmount, priceCurrency.toUpperCase(), {
+      per: quoted.originalAmount > 0 ? period : null,
+    });
+    const planPayload = {
+      id: plan.id,
+      name: plan.name,
+      priceCents: quoted.finalAmount,
+      priceLabel: dueLabel,
+      compareAtLabel: quoted.discount ? fullLabel : null,
+      additionalPriceCents: plan.additionalPriceCents,
+      additionalPriceLabel: plan.additionalPriceLabel,
+      highlights: plan.highlights,
+    };
+    const charge = {
+      billingInterval: quoted.interval,
+      currency: priceCurrency,
+      originalAmount: quoted.originalAmount,
+      finalAmount: quoted.finalAmount,
+      discount: quoted.discount
+        ? {
+            id: quoted.discount.id,
+            name: quoted.discount.name,
+            code: quoted.discount.code,
+            valueType: quoted.discount.value_type,
+            valueAmount: quoted.discount.value_amount,
+          }
+        : null,
+    };
+
+    const paymentIntentId = typeof latestInvoice.payment_intent === "string"
+      ? latestInvoice.payment_intent
+      : latestInvoice.payment_intent?.id;
+    if (paymentIntentId && quoted.discount?.id) {
+      try {
+        await stripe.paymentIntents.update(paymentIntentId, {
+          metadata: {
+            discountId: String(quoted.discount.id),
+            subscriptionId: subscription.id,
+            userId: String(freshUser.id),
+          },
+        });
+      } catch (metaError) {
+        console.warn("Could not store discount on the payment:", metaError.message);
+      }
+    }
+
     // Handle $0 invoices (100% discount, trial, etc.)
     if (latestInvoice.total === 0 || latestInvoice.amount_due === 0) {
       console.log("Checkout session: $0 invoice, no payment needed", {
@@ -166,20 +245,18 @@ export async function POST(request) {
         const setupIntent = await stripe.setupIntents.retrieve(latestInvoice.setup_intent);
         clientSecret = setupIntent.client_secret;
       } else {
-        // No payment or setup needed - subscription is active
+        if (quoted.discount?.id) {
+          const { redeemDiscount } = await import("@/lib/discounts");
+          await redeemDiscount(quoted.discount.id, freshUser.id, subscription.id).catch((err) => {
+            console.error("Discount redemption failed:", err);
+          });
+        }
         return NextResponse.json({
           clientSecret: null,
           subscriptionId: subscription.id,
           requiresPayment: false,
-          plan: {
-            id: plan.id,
-            name: plan.name,
-            priceCents: plan.priceCents,
-            priceLabel: plan.priceLabel,
-            additionalPriceCents: plan.additionalPriceCents,
-            additionalPriceLabel: plan.additionalPriceLabel,
-            highlights: plan.highlights,
-          },
+          plan: planPayload,
+          charge,
           mode,
         });
       }
@@ -222,15 +299,8 @@ export async function POST(request) {
     return NextResponse.json({
       clientSecret,
       subscriptionId: subscription.id,
-      plan: {
-        id: plan.id,
-        name: plan.name,
-        priceCents: plan.priceCents,
-        priceLabel: plan.priceLabel,
-        additionalPriceCents: plan.additionalPriceCents,
-        additionalPriceLabel: plan.additionalPriceLabel,
-        highlights: plan.highlights,
-      },
+      plan: planPayload,
+      charge,
       mode,
     });
   } catch (error) {

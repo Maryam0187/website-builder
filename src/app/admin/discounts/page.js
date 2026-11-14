@@ -1,7 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import BrandLogo from "@/components/BrandLogo";
+import CouponStatusTabs from "@/components/billing/CouponStatusTabs";
+import { discountBuckets } from "@/lib/discount-buckets";
+
+const shellClass = "relative min-h-screen bg-[#070f1f] text-white";
+const fieldClass =
+  "w-full rounded-lg border border-white/15 bg-[#040b1a] px-3 py-2 text-sm text-white outline-none [color-scheme:dark] focus:border-cyan-400/50 disabled:opacity-60";
+const labelClass = "mb-1 block text-sm font-medium text-blue-100";
+const hintClass = "mt-1 text-xs text-blue-200/70";
+
+const PLAN_OPTIONS = [
+  { id: "free", name: "Free" },
+  { id: "starter", name: "Starter" },
+  { id: "custom", name: "Custom" },
+  { id: "domain", name: "Domain" },
+  { id: "pro", name: "Pro" },
+];
 
 export default function AdminDiscountsPage() {
   const router = useRouter();
@@ -12,6 +30,7 @@ export default function AdminDiscountsPage() {
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(getDefaultFormData());
   const [saving, setSaving] = useState(false);
+  const [couponTab, setCouponTab] = useState("available");
 
   function getDefaultFormData() {
     return {
@@ -143,9 +162,9 @@ export default function AdminDiscountsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
-          <p className="text-gray-600">Loading discounts...</p>
+      <div className={shellClass}>
+        <div className="mx-auto max-w-6xl px-6 py-16">
+          <p className="text-blue-100">Loading discounts…</p>
         </div>
       </div>
     );
@@ -153,13 +172,13 @@ export default function AdminDiscountsPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800">{error}</p>
+      <div className={shellClass}>
+        <div className="mx-auto max-w-6xl px-6 py-16">
+          <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-5">
+            <p className="text-rose-200">{error}</p>
             <button
               onClick={fetchDiscounts}
-              className="mt-2 text-red-600 hover:text-red-700 underline"
+              className="mt-3 text-sm font-semibold text-cyan-200 underline-offset-2 hover:underline"
             >
               Retry
             </button>
@@ -170,115 +189,123 @@ export default function AdminDiscountsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex justify-between items-center">
+    <div className={shellClass}>
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-72"
+        style={{
+          backgroundImage:
+            "radial-gradient(ellipse 80% 60% at 10% 0%, rgba(34,211,238,0.16), transparent), radial-gradient(ellipse 60% 50% at 90% 0%, rgba(37,99,235,0.18), transparent)",
+        }}
+      />
+      <header className="relative border-b border-white/10 bg-[#040b1a]/80 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+          <BrandLogo href="/admin" subtitle="Discounts" compact />
+          <Link
+            href="/admin"
+            className="rounded-full border border-white/15 px-4 py-2 text-sm hover:bg-white/5"
+          >
+            Back to admin
+          </Link>
+        </div>
+      </header>
+      <div className="relative mx-auto max-w-6xl px-6 py-10">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Discount Management</h1>
-            <p className="mt-2 text-gray-600">
-              Manage launch promotions (time-based, auto-applied) and coupon codes
+            <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold">Discounts</h1>
+            <p className="mt-2 text-sm text-blue-100">
+              Launch offers apply on their own while they are active. Coupon codes are entered by the customer.
             </p>
           </div>
           <button
             onClick={startCreate}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+            className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold"
           >
-            Create Discount
+            Create discount
           </button>
         </div>
 
         {showCreateForm && (
-          <div className="mb-6 bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold mb-4">
-              {editingId ? 'Edit Discount' : 'Create New Discount'}
+          <div className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-6">
+            <h2 className="mb-4 text-xl font-semibold">
+              {editingId ? "Edit discount" : "Create discount"}
             </h2>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Type
-                </label>
+                <label className={labelClass}>Type</label>
                 <select
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                   disabled={editingId}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className={fieldClass}
                 >
-                  <option value="promotion">Launch Promotion (auto-applied, time-based)</option>
-                  <option value="coupon">Coupon Code (customer enters)</option>
+                  <option value="promotion">Launch promotion (auto-applied)</option>
+                  <option value="coupon">Coupon code (customer enters)</option>
                 </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  {formData.type === 'promotion' 
-                    ? 'Automatically applied to all new subscriptions while active' 
-                    : 'Customer must enter code at checkout'}
+                <p className={hintClass}>
+                  {formData.type === "promotion"
+                    ? "Applied to new subscriptions while it is active and not expired."
+                    : "The customer enters this code at checkout."}
                 </p>
               </div>
 
-              {formData.type === 'coupon' && (
+              {formData.type === "coupon" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Code
-                  </label>
+                  <label className={labelClass}>Code</label>
                   <input
                     type="text"
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                     disabled={editingId}
                     placeholder="SAVE50"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className={fieldClass}
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name
-                </label>
+                <label className={labelClass}>Name</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="50% Off Promotion"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="50% off launch"
+                  className={fieldClass}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Discount Type
-                </label>
+                <label className={labelClass}>Discount type</label>
                 <select
                   value={formData.valueType}
                   onChange={(e) => setFormData({ ...formData, valueType: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className={fieldClass}
                 >
                   <option value="percent">Percentage</option>
-                  <option value="fixed">Fixed Amount (cents)</option>
+                  <option value="fixed">Fixed amount (cents)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {formData.valueType === 'percent' ? 'Percentage (%)' : 'Amount (cents)'}
+                <label className={labelClass}>
+                  {formData.valueType === "percent" ? "Percentage (%)" : "Amount (cents)"}
                 </label>
                 <input
                   type="number"
                   value={formData.valueAmount}
                   onChange={(e) => setFormData({ ...formData, valueAmount: parseInt(e.target.value) || 0 })}
                   min="0"
-                  max={formData.valueType === 'percent' ? 100 : undefined}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  max={formData.valueType === "percent" ? 100 : undefined}
+                  className={fieldClass}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Duration
-                </label>
+                <label className={labelClass}>Duration</label>
                 <select
                   value={formData.durationType}
                   onChange={(e) => setFormData({ ...formData, durationType: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className={fieldClass}
                 >
                   <option value="once">One-time</option>
                   <option value="repeating">Repeating (N months)</option>
@@ -286,70 +313,109 @@ export default function AdminDiscountsPage() {
                 </select>
               </div>
 
-              {formData.durationType === 'repeating' && (
+              {formData.durationType === "repeating" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Duration (months)
-                  </label>
+                  <label className={labelClass}>Duration (months)</label>
                   <input
                     type="number"
                     value={formData.durationMonths}
                     onChange={(e) => setFormData({ ...formData, durationMonths: parseInt(e.target.value) || 1 })}
                     min="1"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className={fieldClass}
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max Redemptions {formData.type === 'promotion' ? '(optional - blank for unlimited)' : '(optional)'}
+                <label className={labelClass}>
+                  Max redemptions {formData.type === "promotion" ? "(blank for unlimited)" : "(optional)"}
                 </label>
                 <input
                   type="number"
-                  value={formData.maxRedemptions || ''}
+                  value={formData.maxRedemptions || ""}
                   onChange={(e) => setFormData({ ...formData, maxRedemptions: e.target.value ? parseInt(e.target.value) : null })}
-                  placeholder={formData.type === 'promotion' ? 'Unlimited' : 'Unlimited'}
+                  placeholder="Unlimited"
                   min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className={fieldClass}
                 />
-                {formData.type === 'promotion' && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Show spots counter only if set; otherwise show time countdown
+                {formData.type === "promotion" && (
+                  <p className={hintClass}>
+                    A cap shows remaining spots. Leave it blank to count down by the end date.
                   </p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {formData.type === 'promotion' ? 'Active Until (required for promotions)' : 'Expiry Date (optional)'}
+                <label className={labelClass}>
+                  {formData.type === "promotion" ? "Active until" : "Expiry date (optional)"}
                 </label>
                 <input
                   type="datetime-local"
-                  value={formData.expiryDate ? formData.expiryDate.slice(0, 16) : ''}
+                  value={formData.expiryDate ? formData.expiryDate.slice(0, 16) : ""}
                   onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value || null })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  required={formData.type === 'promotion'}
+                  className={fieldClass}
+                  required={formData.type === "promotion"}
                 />
-                {formData.type === 'promotion' && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Promotion stops auto-applying after this date/time
+                {formData.type === "promotion" && (
+                  <p className={hintClass}>
+                    The offer stops applying after this date.
                   </p>
                 )}
               </div>
 
+              <div className="md:col-span-2">
+                <label className={labelClass}>Plans</label>
+                <div className="flex flex-wrap gap-2">
+                  {PLAN_OPTIONS.map((plan) => {
+                    const selected = (formData.applicablePlans || []).includes(plan.id);
+                    return (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        onClick={() => {
+                          const current = formData.applicablePlans || [];
+                          const next = selected
+                            ? current.filter((id) => id !== plan.id)
+                            : [...current, plan.id];
+                          setFormData({ ...formData, applicablePlans: next });
+                        }}
+                        className={`rounded-full border px-3 py-1.5 text-sm ${
+                          selected
+                            ? "border-cyan-400/40 bg-cyan-500/15 text-cyan-100"
+                            : "border-white/15 text-blue-100 hover:bg-white/5"
+                        }`}
+                      >
+                        {plan.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className={hintClass}>Leave every plan off to cover all of them.</p>
+              </div>
+
+              <div>
+                <label className={labelClass}>Billing</label>
+                <select
+                  value={formData.billingInterval || ""}
+                  onChange={(e) => setFormData({ ...formData, billingInterval: e.target.value || null })}
+                  className={fieldClass}
+                >
+                  <option value="">Monthly and yearly</option>
+                  <option value="monthly">Monthly only</option>
+                  <option value="yearly">Yearly only</option>
+                </select>
+              </div>
+
               {!editingId && (
-                <div className="col-span-2">
-                  <label className="flex items-center">
+                <div className="md:col-span-2">
+                  <label className="flex items-center text-sm text-blue-100">
                     <input
                       type="checkbox"
                       checked={formData.createStripeCoupon}
                       onChange={(e) => setFormData({ ...formData, createStripeCoupon: e.target.checked })}
-                      className="mr-2"
+                      className="mr-2 accent-cyan-400"
                     />
-                    <span className="text-sm text-gray-700">
-                      Create Stripe coupon automatically
-                    </span>
+                    Create the matching Stripe coupon
                   </label>
                 </div>
               )}
@@ -359,14 +425,14 @@ export default function AdminDiscountsPage() {
               <button
                 onClick={saveDiscount}
                 disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
               >
-                {saving ? 'Saving...' : editingId ? 'Update' : 'Create'}
+                {saving ? "Saving…" : editingId ? "Update" : "Create"}
               </button>
               <button
                 onClick={cancelForm}
                 disabled={saving}
-                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 disabled:opacity-50 font-medium"
+                className="rounded-full border border-white/15 px-5 py-2.5 text-sm text-blue-100 hover:bg-white/5 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -374,66 +440,83 @@ export default function AdminDiscountsPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <CouponStatusTabs
+          discounts={discounts}
+          active={couponTab}
+          onChange={setCouponTab}
+        />
+
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+          <table className="min-w-full divide-y divide-white/10">
+            <thead className="bg-white/5">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code/Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Discount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Redemptions</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                {["Type", "Code / name", "Discount", "Duration", "Redemptions", "Status", "Actions"].map((heading) => (
+                  <th key={heading} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-blue-200/70">
+                    {heading}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {discounts.map((discount) => (
-                <tr key={discount.id}>
+            <tbody className="divide-y divide-white/10">
+              {discounts.filter((discount) => discountBuckets(discount)[couponTab]).map((discount) => (
+                <tr key={discount.id} className="hover:bg-white/5">
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      discount.type === 'promotion' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                      discount.type === "promotion"
+                        ? "border border-violet-400/30 bg-violet-500/15 text-violet-200"
+                        : "border border-cyan-400/30 bg-cyan-500/15 text-cyan-100"
                     }`}>
-                      {discount.type === 'promotion' ? 'Launch Promo' : 'Coupon'}
+                      {discount.type === "promotion" ? "Launch offer" : "Coupon"}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm">
-                    {discount.code && <div className="font-mono font-bold">{discount.code}</div>}
-                    <div className="text-gray-600">{discount.name}</div>
-                    {discount.expiry_date && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        Expires: {new Date(discount.expiry_date).toLocaleString()}
+                    {discount.code ? <div className="font-mono font-semibold text-white">{discount.code}</div> : null}
+                    <div className="text-blue-100">{discount.name}</div>
+                    {discount.expiry_date ? (
+                      <div className="mt-1 text-xs text-blue-200/70">
+                        Expires {new Date(discount.expiry_date).toLocaleString()}
                       </div>
-                    )}
+                    ) : null}
+                    {discount.applicable_plans?.length || discount.billing_interval ? (
+                      <div className="mt-1 text-xs text-blue-200/70">
+                        {[
+                          discount.applicable_plans?.length
+                            ? discount.applicable_plans.join(", ")
+                            : null,
+                          discount.billing_interval,
+                        ].filter(Boolean).join(" · ")}
+                      </div>
+                    ) : null}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {discount.value_type === 'percent' 
-                      ? `${discount.value_amount}%` 
-                      : `$${(discount.value_amount / 100).toFixed(2)}`
-                    }
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-cyan-100">
+                    {discount.value_type === "percent"
+                      ? `${discount.value_amount}%`
+                      : `$${(discount.value_amount / 100).toFixed(2)}`}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {discount.duration_type === 'once' && 'One-time'}
-                    {discount.duration_type === 'repeating' && `${discount.duration_months} months`}
-                    {discount.duration_type === 'forever' && 'Forever'}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-100">
+                    {discount.duration_type === "once" && "One-time"}
+                    {discount.duration_type === "repeating" && `${discount.duration_months} months`}
+                    {discount.duration_type === "forever" && "Forever"}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {discount.used_count} {discount.max_redemptions ? `/ ${discount.max_redemptions}` : '(unlimited)'}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-100">
+                    {discount.used_count} {discount.max_redemptions ? `/ ${discount.max_redemptions}` : "(unlimited)"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
                       onClick={() => toggleActive(discount.id, discount.active)}
-                      className={`px-2 py-1 rounded text-xs font-semibold ${
-                        discount.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                        discount.active
+                          ? "border border-emerald-400/30 bg-emerald-500/15 text-emerald-200"
+                          : "border border-white/15 bg-white/5 text-blue-200"
                       }`}
                     >
-                      {discount.active ? 'Active' : 'Inactive'}
+                      {discount.active ? "Active" : "Inactive"}
                     </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
                       onClick={() => startEdit(discount)}
-                      className="text-blue-600 hover:text-blue-700 font-medium"
+                      className="font-semibold text-cyan-200 hover:text-cyan-100"
                     >
                       Edit
                     </button>
@@ -443,9 +526,13 @@ export default function AdminDiscountsPage() {
             </tbody>
           </table>
           
-          {discounts.length === 0 && (
-            <div className="text-center py-12 text-gray-500">
-              No discounts created yet. Click "Create Discount" to get started.
+          {discounts.filter((discount) => discountBuckets(discount)[couponTab]).length === 0 && (
+            <div className="py-12 text-center text-sm text-blue-200/80">
+              {couponTab === "available"
+                ? "No available coupons."
+                : couponTab === "used"
+                  ? "No used coupons."
+                  : "No expired coupons."}
             </div>
           )}
         </div>

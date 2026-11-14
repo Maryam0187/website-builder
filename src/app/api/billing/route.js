@@ -23,8 +23,6 @@ import {
 } from "@/lib/billing";
 import { isStripeConfigured } from "@/lib/stripe";
 import { countLiveSitesByOwner, countSitesByOwner } from "@/lib/store-actions";
-import { isStripeSupported } from "@/lib/pricing";
-
 async function billingForUser(user) {
   const fresh = publicUser(await getUserById(user.id));
   const sitesUsed = user.role === "owner" ? await countSitesByOwner(user.id) : 0;
@@ -61,7 +59,8 @@ export async function POST(request) {
   // Block Pakistan from Stripe operations
   const stripeActions = ["subscribe", "checkout", "buy-site-slot", "buy-addon", "cancel-subscription", "downgrade"];
   const userRegion = user.region || "usa";
-  if (stripeActions.includes(action) && !isStripeSupported(userRegion)) {
+  const { regionAllowsStripe } = await import("@/lib/billing-regions");
+  if (stripeActions.includes(action) && !(await regionAllowsStripe(userRegion))) {
     return NextResponse.json({
       error: "Stripe payments not available in your region. Please contact us for payment options.",
       region: userRegion,
@@ -82,9 +81,11 @@ export async function POST(request) {
       }
       const planId = String(body.planId || "starter").trim();
       const returnTo = body.returnTo;
+      const billingInterval = body.billingInterval === "yearly" ? "yearly" : "monthly";
+      const couponCode = String(body.couponCode || "").trim();
 
       if (isStripeConfigured()) {
-        const result = await createStripeCheckout(user.id, planId, { returnTo });
+        const result = await createStripeCheckout(user.id, planId, { returnTo, billingInterval, couponCode });
         if (result.url) {
           return NextResponse.json({
             checkoutUrl: result.url,

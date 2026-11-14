@@ -1,3 +1,5 @@
+import { yearlyCents } from "./plan-price-label";
+
 /**
  * Multi-region pricing configuration
  * 
@@ -222,11 +224,11 @@ export async function getRegionPricingAsync(regionId, planId, billingInterval = 
       const isYearly = billingInterval === 'yearly';
       
       return {
-        firstSite: isYearly ? dbPricing.firstSiteYearly : dbPricing.firstSite,
-        extraSite: isYearly ? dbPricing.extraSiteYearly : dbPricing.extraSite,
+        firstSite: isYearly ? yearlyCents(dbPricing.firstSite) : dbPricing.firstSite,
+        extraSite: isYearly ? yearlyCents(dbPricing.extraSite) : dbPricing.extraSite,
         currency: dbPricing.currency,
         active: dbPricing.active,
-        stripePriceIds: isYearly ? dbPricing.stripePriceIdsYearly : dbPricing.stripePriceIds,
+        stripePriceIds: isYearly ? null : dbPricing.stripePriceIds,
       };
     }
   } catch (error) {

@@ -247,6 +247,17 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS grace_period_ends_at TIMESTAMPTZ NULL
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS unpublished_at TIMESTAMPTZ NULL;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS unpublish_reason TEXT NULL;
 
+-- Regions an admin can add, disable, or remove. Built-in rows are seeded in code.
+CREATE TABLE IF NOT EXISTS billing_regions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  stripe BOOLEAN NOT NULL DEFAULT true,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Admin-configurable pricing system
 CREATE TABLE IF NOT EXISTS pricing_configs (
   id BIGSERIAL PRIMARY KEY,

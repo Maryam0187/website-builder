@@ -4,6 +4,12 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 import { query } from "@/lib/db";
 import { getAllPricingConfigs, getPricingHistory, invalidatePricingCache } from "@/lib/pricing-cache";
+import {
+  addBillingRegion,
+  deleteBillingRegion,
+  listBillingRegions,
+  setBillingRegionEnabled,
+} from "@/lib/billing-regions";
 import Stripe from "stripe";
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -33,9 +39,11 @@ export async function GET(request) {
       return NextResponse.json({ history });
     }
     
-    // Get all configs
-    const configs = await getAllPricingConfigs();
-    return NextResponse.json({ configs });
+    const [configs, regions] = await Promise.all([
+      getAllPricingConfigs(),
+      listBillingRegions(),
+    ]);
+    return NextResponse.json({ configs, regions });
     
   } catch (error) {
     console.error("GET /api/admin/pricing error:", error);
@@ -71,6 +79,21 @@ export async function POST(request) {
     if (rateCheck.limited) return rateCheck.response;
 
     const body = await request.json();
+    const action = String(body.action || "save").trim();
+
+    if (action === "add-region") {
+      const region = await addBillingRegion(body);
+      return NextResponse.json({ success: true, region });
+    }
+    if (action === "set-region-enabled") {
+      const region = await setBillingRegionEnabled(body.id, body.enabled);
+      return NextResponse.json({ success: true, region });
+    }
+    if (action === "delete-region") {
+      await deleteBillingRegion(String(body.id || ""));
+      return NextResponse.json({ success: true });
+    }
+
     const {
       id,
       region,
@@ -106,61 +129,52 @@ export async function POST(request) {
     let stripeFirstSitePriceId = oldConfig.stripe_first_site_price_id;
     let stripeExtraSitePriceId = oldConfig.stripe_extra_site_price_id;
     
-    if (stripe && region !== 'pakistan' && active) {
+    let stripeWarning = null;
+    if (stripe && String(currency || "").toLowerCase() === "usd" && active) {
       try {
-        // Create new price for first site
-        if (firstSiteCents > 0) {
-          const firstSitePrice = await stripe.prices.create({
-            currency: currency.toLowerCase(),
-            unit_amount: firstSiteCents,
-            recurring: { interval: 'month' },
-            product_data: {
-              name: `${planId.toUpperCase()} Plan - First Site (${region.toUpperCase()})`,
-            },
-            metadata: {
-              region,
-              planId,
-              type: 'first_site',
-              configId: id,
-            },
+        async function createRecurringPrice(name, cents, type, interval) {
+          const product = await stripe.products.create({
+            name,
+            metadata: { region, planId, type, configId: String(id) },
           });
-          stripeFirstSitePriceId = firstSitePrice.id;
-          
-          // Archive old price
-          if (oldConfig.stripe_first_site_price_id && oldConfig.stripe_first_site_price_id !== stripeFirstSitePriceId) {
+          const price = await stripe.prices.create({
+            currency: "usd",
+            unit_amount: cents,
+            recurring: { interval },
+            product: product.id,
+            metadata: { region, planId, type, configId: String(id) },
+          });
+          return price.id;
+        }
+
+        if (firstSiteCents > 0) {
+          const nextId = await createRecurringPrice(
+            `${planId.toUpperCase()} Plan - First Site (${region.toUpperCase()})`,
+            firstSiteCents,
+            "first_site",
+            "month"
+          );
+          if (oldConfig.stripe_first_site_price_id && oldConfig.stripe_first_site_price_id !== nextId) {
             await stripe.prices.update(oldConfig.stripe_first_site_price_id, { active: false });
           }
+          stripeFirstSitePriceId = nextId;
         }
-        
-        // Create new price for extra site
+
         if (extraSiteCents > 0) {
-          const extraSitePrice = await stripe.prices.create({
-            currency: currency.toLowerCase(),
-            unit_amount: extraSiteCents,
-            recurring: { interval: 'month' },
-            product_data: {
-              name: `${planId.toUpperCase()} Plan - Additional Site (${region.toUpperCase()})`,
-            },
-            metadata: {
-              region,
-              planId,
-              type: 'extra_site',
-              configId: id,
-            },
-          });
-          stripeExtraSitePriceId = extraSitePrice.id;
-          
-          // Archive old price
-          if (oldConfig.stripe_extra_site_price_id && oldConfig.stripe_extra_site_price_id !== stripeExtraSitePriceId) {
+          const nextId = await createRecurringPrice(
+            `${planId.toUpperCase()} Plan - Additional Site (${region.toUpperCase()})`,
+            extraSiteCents,
+            "extra_site",
+            "month"
+          );
+          if (oldConfig.stripe_extra_site_price_id && oldConfig.stripe_extra_site_price_id !== nextId) {
             await stripe.prices.update(oldConfig.stripe_extra_site_price_id, { active: false });
           }
+          stripeExtraSitePriceId = nextId;
         }
       } catch (stripeError) {
         console.error("Stripe price creation failed:", stripeError);
-        return NextResponse.json(
-          { error: `Stripe error: ${stripeError.message}` },
-          { status: 500 }
-        );
+        stripeWarning = "Saved the catalog price. Stripe price update failed, so new checkouts will create a price from this amount.";
       }
     }
     
@@ -172,8 +186,7 @@ export async function POST(request) {
         extra_site_cents = $2,
         active = $3,
         stripe_first_site_price_id = $4,
-        stripe_extra_site_price_id = $5,
-        updated_at = CURRENT_TIMESTAMP
+        stripe_extra_site_price_id = $5
       WHERE id = $6
     `, [
       firstSiteCents,
@@ -187,14 +200,20 @@ export async function POST(request) {
     // Log to history
     await query(`
       INSERT INTO pricing_history
-      (pricing_config_id, changed_by_user_id, first_site_cents, extra_site_cents, active, notes)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      (pricing_config_id, region, plan_id, currency, first_site_cents, extra_site_cents, active,
+       stripe_first_site_price_id, stripe_extra_site_price_id, changed_by_user_id, change_reason)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `, [
       id,
-      user.id,
+      oldConfig.region,
+      oldConfig.plan_id,
+      oldConfig.currency,
       firstSiteCents,
       extraSiteCents,
       active,
+      stripeFirstSitePriceId,
+      stripeExtraSitePriceId,
+      user.id,
       `Updated via admin UI. Previous: ${oldConfig.first_site_cents}/${oldConfig.extra_site_cents}`,
     ]);
     
@@ -203,6 +222,7 @@ export async function POST(request) {
     
     return NextResponse.json({
       success: true,
+      warning: stripeWarning,
       config: {
         id,
         region,
@@ -225,9 +245,11 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
     
+    const message = String(error.message || "");
+    const safe = message && message.length < 180 && !/select |insert |update |relation /i.test(message);
     return NextResponse.json(
-      { error: "Failed to update pricing" },
-      { status: 500 }
+      { error: safe ? message : "Failed to update pricing" },
+      { status: safe ? 400 : 500 }
     );
   }
 }

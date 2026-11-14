@@ -1542,7 +1542,7 @@ export async function cancelStripeSubscription(userId) {
 }
 
 /** Create Stripe Checkout session for a plan (sandbox or live). */
-export async function createStripeCheckout(userId, planId = "starter", { returnTo } = {}) {
+export async function createStripeCheckout(userId, planId = "starter", { returnTo, billingInterval = "monthly", couponCode = "" } = {}) {
   if (!isStripeConfigured()) throw new Error("Stripe is not configured");
 
   const user = await getUserById(userId);
@@ -1554,8 +1554,9 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
     throw new Error("Choose a paid package to checkout with Stripe");
   }
 
+  const interval = billingInterval === "yearly" ? "yearly" : "monthly";
   const existingSub = await getUsableStripeSubscription(user);
-  if (existingSub && isSubscriptionActive(user)) {
+  if (existingSub && isSubscriptionActive(user) && interval !== "yearly") {
     const currentRank = planRank(user.planId || "free");
     const nextRank = planRank(plan.id);
     if (nextRank > currentRank) {
@@ -1596,6 +1597,19 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
 
   const liveCount = await countLiveSitesByOwner(userId);
   const quantity = Math.max(1, liveCount);
+  const { quotePlanCharge } = await import("./checkout-quote");
+  const quoted = await quotePlanCharge({
+    region: user.region || "usa",
+    planId: plan.id,
+    billingInterval: interval,
+    couponCode,
+    fallbackCents: plan.priceCents,
+  });
+  if (quoted.couponError) throw new Error(quoted.couponError);
+  if (quoted.discount && !quoted.stripeCouponId) {
+    throw new Error("Could not apply the discount in Stripe. Try again.");
+  }
+  const period = quoted.interval === "yearly" ? "year" : "month";
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -1605,13 +1619,14 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
     cancel_url: urls.cancel_url,
     // Sandbox / standard Checkout — Managed Payments requires extra tax setup
     managed_payments: { enabled: false },
+    discounts: quoted.stripeCouponId ? [{ coupon: quoted.stripeCouponId }] : undefined,
     line_items: [
       {
         quantity,
         price_data: {
-          currency: BILLING_CURRENCY,
-          unit_amount: plan.priceCents,
-          recurring: { interval: "month" },
+          currency: quoted.currency || BILLING_CURRENCY,
+          unit_amount: quoted.originalAmount,
+          recurring: { interval: period },
           product_data: {
             name: `Easy Website — ${plan.name}`,
             description: `${plan.description} Qty = live websites (min 1).`,
@@ -1628,12 +1643,16 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
       changeKind,
       liveQuantity: String(quantity),
       returnTo: urls.returnTo,
+      billingInterval: quoted.interval,
+      discountId: quoted.discount?.id ? String(quoted.discount.id) : "",
     },
     subscription_data: {
       metadata: {
         userId: String(user.id),
         planId: plan.id,
         liveQuantity: String(quantity),
+        billingInterval: quoted.interval,
+        discountId: quoted.discount?.id ? String(quoted.discount.id) : "",
       },
     },
   });
@@ -1964,6 +1983,16 @@ export async function applyCheckoutSession(session) {
     stripeSubscriptionId: newSubId,
   });
 
+  const discountId = Number(session.metadata?.discountId);
+  if (Number.isFinite(discountId) && discountId > 0) {
+    try {
+      const { redeemDiscount } = await import("./discounts");
+      await redeemDiscount(discountId, userId, newSubId || null);
+    } catch (err) {
+      console.error("Discount redemption failed:", err);
+    }
+  }
+
   if (invoiceId) {
     await query(
       `UPDATE invoices
@@ -2101,7 +2130,7 @@ export async function createSetupIntent(userId) {
 }
 
 /** Subscribe to a plan on-site using the customer's saved payment method. */
-export async function subscribeWithSavedCard(userId, planId = "starter") {
+export async function subscribeWithSavedCard(userId, planId = "starter", { billingInterval = "monthly", couponCode = "" } = {}) {
   if (!isStripeConfigured()) throw new Error("Stripe is not configured");
   const user = await getUserById(userId);
   if (!user) throw new Error("User not found");
@@ -2118,8 +2147,9 @@ export async function subscribeWithSavedCard(userId, planId = "starter") {
     throw new Error("Choose a paid package to subscribe");
   }
 
+  const interval = billingInterval === "yearly" ? "yearly" : "monthly";
   const existingSub = await getUsableStripeSubscription(user);
-  if (existingSub && isSubscriptionActive(user)) {
+  if (existingSub && isSubscriptionActive(user) && interval !== "yearly") {
     const currentRank = planRank(user.planId || "free");
     const nextRank = planRank(plan.id);
     if (nextRank > currentRank) {
@@ -2160,24 +2190,37 @@ export async function subscribeWithSavedCard(userId, planId = "starter") {
 
   const liveCount = await countLiveSitesByOwner(userId);
   const quantity = Math.max(1, liveCount);
+  const { quotePlanCharge } = await import("./checkout-quote");
+  const quoted = await quotePlanCharge({
+    region: user.region || "usa",
+    planId: plan.id,
+    billingInterval: interval,
+    couponCode,
+    fallbackCents: plan.priceCents,
+  });
+  if (quoted.couponError) throw new Error(quoted.couponError);
+  if (quoted.discount && !quoted.stripeCouponId) {
+    throw new Error("Could not apply the discount in Stripe. Try again.");
+  }
+  const period = quoted.interval === "yearly" ? "year" : "month";
 
-  // Create Product first, then Price with product ID
   const product = await stripe.products.create({
     name: `Easy Website — ${plan.name}`,
     metadata: { planId: plan.id },
   });
 
   const price = await stripe.prices.create({
-    currency: BILLING_CURRENCY,
-    unit_amount: plan.priceCents,
-    recurring: { interval: "month" },
-    product: product.id, // Use product ID for subscriptions
-    metadata: { planId: plan.id },
+    currency: quoted.currency || BILLING_CURRENCY,
+    unit_amount: quoted.originalAmount,
+    recurring: { interval: period },
+    product: product.id,
+    metadata: { planId: plan.id, billingInterval: quoted.interval },
   });
 
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: price.id, quantity }],
+    discounts: quoted.stripeCouponId ? [{ coupon: quoted.stripeCouponId }] : undefined,
     default_payment_method: pmId,
     payment_behavior: "default_incomplete",
     expand: ["latest_invoice"],
@@ -2185,6 +2228,8 @@ export async function subscribeWithSavedCard(userId, planId = "starter") {
       userId: String(user.id),
       planId: plan.id,
       liveQuantity: String(quantity),
+      billingInterval: quoted.interval,
+      discountId: quoted.discount?.id ? String(quoted.discount.id) : "",
     },
   });
 
@@ -2210,15 +2255,28 @@ export async function subscribeWithSavedCard(userId, planId = "starter") {
     stripeSubscriptionId: subscription.id,
   });
 
+  if (quoted.discount?.id) {
+    try {
+      const { redeemDiscount } = await import("./discounts");
+      await redeemDiscount(quoted.discount.id, userId, subscription.id);
+    } catch (err) {
+      console.error("Discount redemption failed:", err);
+    }
+  }
+
   const sitesUsed = await countSitesByOwner(userId);
   const liveSites = await countLiveSitesByOwner(userId);
+  const { formatRegionAmount } = await import("./plan-price-label");
+  const chargedLabel = formatRegionAmount(quoted.finalAmount, (quoted.currency || "usd").toUpperCase(), {
+    per: quoted.finalAmount > 0 ? period : null,
+  });
   return {
     subscription,
     user: updatedUser,
     billing: billingPublicFields(updatedUser, { sitesUsed, liveSites }),
     invoice: await getInvoiceById(invoice.id),
     plan: listPlans().find((p) => p.id === plan.id),
-    message: `Subscribed to ${plan.name}. Charged ${plan.priceLabel}.`,
+    message: `Subscribed to ${plan.name}. Charged ${chargedLabel}.`,
   };
 }
 

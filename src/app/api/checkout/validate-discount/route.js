@@ -6,6 +6,7 @@ import {
   validateDiscountApplicability,
   calculateDiscountAmount,
   chooseBestDiscount,
+  publicOffer,
 } from "@/lib/discounts";
 import { getRegionPricingAsync } from "@/lib/pricing";
 
@@ -26,7 +27,19 @@ export async function POST(request) {
     if (rateCheck.limited) return rateCheck.response;
 
     const body = await request.json();
-    const { code, planId, billingInterval = 'monthly' } = body;
+    const { code, planId, billingInterval = 'monthly', lookup } = body;
+
+    if (lookup) {
+      const entered = String(code || "").trim();
+      if (!entered) {
+        return NextResponse.json({ valid: false, error: "Code required" });
+      }
+      const coupon = await getCouponByCode(entered);
+      if (!coupon) {
+        return NextResponse.json({ valid: false, error: "Invalid or expired coupon code" });
+      }
+      return NextResponse.json({ valid: true, offer: publicOffer(coupon) });
+    }
 
     if (!planId) {
       return NextResponse.json({ error: "planId required" }, { status: 400 });

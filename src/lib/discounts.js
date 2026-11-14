@@ -1,4 +1,4 @@
-import { query } from "./db";
+import { query, getPool } from "./db";
 
 /**
  * Get active launch promotion (if active, not expired, and spots available)
@@ -85,12 +85,97 @@ export function chooseBestDiscount(promotion, coupon, amount) {
   return promotionSavings >= couponSavings ? promotion : coupon;
 }
 
+/** Fields the plan page can show. Amounts stay in cents. */
+export function publicOffer(discount) {
+  if (!discount) return null;
+  let daysRemaining = null;
+  if (discount.expiry_date) {
+    const ms = new Date(discount.expiry_date).getTime() - Date.now();
+    daysRemaining = Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+  }
+  return {
+    id: discount.id,
+    name: discount.name,
+    code: discount.code || null,
+    valueType: discount.value_type,
+    valueAmount: discount.value_amount,
+    durationType: discount.duration_type,
+    durationMonths: discount.duration_months,
+    applicablePlans: discount.applicable_plans || [],
+    billingInterval: discount.billing_interval || null,
+    daysRemaining,
+    spotsRemaining: discount.max_redemptions != null
+      ? Math.max(0, discount.max_redemptions - discount.used_count)
+      : null,
+    totalSpots: discount.max_redemptions,
+  };
+}
+
 /**
- * Atomically redeem a discount (increment used_count)
- * Returns true if successfully redeemed, false if limit reached
+ * Launch offer and an optional coupon. The larger saving wins.
+ * A bad coupon code is reported and not applied.
  */
+export async function quoteBestDiscount({ planId, billingInterval = "monthly", code, amountCents }) {
+  const interval = billingInterval === "yearly" ? "yearly" : "monthly";
+  const promotion = await getLaunchPromotion();
+  let coupon = null;
+  let couponError = null;
+  const entered = String(code || "").trim();
+  if (entered) {
+    coupon = await getCouponByCode(entered);
+    if (!coupon) {
+      couponError = "Invalid or expired coupon code";
+    } else if (!validateDiscountApplicability(coupon, planId, interval)) {
+      couponError = "This coupon does not apply to this plan or billing period";
+      coupon = null;
+    }
+  }
+  const applicablePromotion = promotion && validateDiscountApplicability(promotion, planId, interval)
+    ? promotion
+    : null;
+  const best = chooseBestDiscount(applicablePromotion, coupon, amountCents);
+  const discountAmount = calculateDiscountAmount(best, amountCents);
+  return {
+    discount: best,
+    discountAmount,
+    finalAmount: Math.max(0, (Number(amountCents) || 0) - discountAmount),
+    couponError,
+  };
+}
+
+/** Create the Stripe coupon once and keep its id on the discount row. */
+export async function ensureStripeCoupon(discount) {
+  if (!discount) return null;
+  if (discount.stripe_coupon_id) return discount.stripe_coupon_id;
+  const { getStripe, isStripeConfigured } = await import("./stripe");
+  if (!isStripeConfigured()) return null;
+  const stripe = getStripe();
+  const params = { name: discount.name || "Discount" };
+  if (discount.value_type === "percent") {
+    params.percent_off = discount.value_amount;
+  } else {
+    params.amount_off = discount.value_amount;
+    params.currency = "usd";
+  }
+  if (discount.duration_type === "once") {
+    params.duration = "once";
+  } else if (discount.duration_type === "repeating") {
+    params.duration = "repeating";
+    params.duration_in_months = discount.duration_months || 1;
+  } else {
+    params.duration = "forever";
+  }
+  const created = await stripe.coupons.create(params);
+  await query(
+    `UPDATE discounts SET stripe_coupon_id = $1 WHERE id = $2`,
+    [created.id, discount.id]
+  );
+  discount.stripe_coupon_id = created.id;
+  return created.id;
+}
+
 export async function redeemDiscount(discountId, userId, subscriptionId = null) {
-  const client = await query.pool.connect();
+  const client = await getPool().connect();
   
   try {
     await client.query('BEGIN');
@@ -115,6 +200,17 @@ export async function redeemDiscount(discountId, userId, subscriptionId = null) 
       return { success: false, error: 'Discount limit reached' };
     }
     
+    if (subscriptionId) {
+      const duplicate = await client.query(`
+        SELECT id FROM discount_redemptions
+        WHERE discount_id = $1 AND user_id = $2 AND subscription_id = $3
+      `, [discountId, userId, subscriptionId]);
+      if (duplicate.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return { success: true, already: true, discount };
+      }
+    }
+
     // Check if user already redeemed (for promotions)
     if (discount.type === 'promotion') {
       const existingResult = await client.query(`

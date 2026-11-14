@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { ALL_REGIONS } from "@/lib/region-detection";
+import { getBillingRegion } from "@/lib/billing-regions";
 
 /**
  * POST /api/region/save
@@ -13,7 +13,8 @@ export async function POST(request) {
     const { region } = body;
     
     // Validate region
-    if (!region || !ALL_REGIONS.find(r => r.id === region)) {
+    const regionRow = region ? await getBillingRegion(region) : null;
+    if (!regionRow || !regionRow.enabled) {
       return NextResponse.json(
         { error: "Invalid region" },
         { status: 400 }
@@ -23,6 +24,12 @@ export async function POST(request) {
     // Save to user profile if logged in
     const user = await getCurrentUser();
     if (user) {
+      if (user.regionLocked && user.region !== region) {
+        return NextResponse.json(
+          { error: "Region is locked after the first subscription. Contact support to change it." },
+          { status: 400 }
+        );
+      }
       await query(
         `UPDATE users SET region = $1 WHERE id = $2`,
         [region, user.id]

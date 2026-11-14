@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import PackageFlow from "@/components/billing/PackageFlow";
+import OwnerCoupons from "@/components/billing/OwnerCoupons";
+import AdminTemplatesGallery from "@/components/admin/AdminTemplatesGallery";
 import SupportChatSidebar from "@/components/messaging/SupportChatSidebar";
 import GoLiveDialog from "@/components/site/GoLiveDialog";
 import RestoreVersionDialog from "@/components/site/RestoreVersionDialog";
@@ -34,7 +36,7 @@ function normalizeSettingsHash(hash) {
 
 function profileSectionFromReturn(value, fallback = "#plan") {
   const next = normalizeSettingsHash(`#${String(value || "").replace(/^#/, "")}`);
-  if (["#plan", "#billing", "#websites", "#account", "#security"].includes(next)) return next;
+  if (["#plan", "#billing", "#coupons", "#websites", "#templates", "#account", "#security"].includes(next)) return next;
   return normalizeSettingsHash(fallback);
 }
 
@@ -56,6 +58,8 @@ export default function ProfilePage() {
   const [site, setSite] = useState(null);
   const [sites, setSites] = useState([]);
   const [billing, setBilling] = useState(null);
+  const [regionPrices, setRegionPrices] = useState(null);
+  const [regions, setRegions] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [billingMsg, setBillingMsg] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
@@ -137,6 +141,8 @@ export default function ProfilePage() {
         Object.fromEntries(mappedSites.map((item) => [item.id, item.name || ""])),
       );
       setBilling(data.billing || null);
+      if (data.regionPrices) setRegionPrices(data.regionPrices);
+      if (data.regions) setRegions(data.regions);
       setInvoices(data.invoices || []);
 
       if (checkout === "cancel") {
@@ -638,7 +644,12 @@ export default function ProfilePage() {
         const res = await fetch("/api/billing/charge-on-site", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "subscribe", planId: id }),
+          body: JSON.stringify({
+            action: "subscribe",
+            planId: id,
+            billingInterval: extra.billingInterval,
+            couponCode: extra.couponCode,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Subscription failed");
@@ -698,6 +709,8 @@ export default function ProfilePage() {
           planId: id,
           mode: "subscribe",
         });
+        if (extra.billingInterval) params.set("interval", extra.billingInterval);
+        if (extra.couponCode) params.set("code", extra.couponCode);
         window.location.href = `/checkout?${params.toString()}`;
         return;
       }
@@ -806,74 +819,102 @@ export default function ProfilePage() {
   const navItems = [
     { href: "#account", label: "Account" },
     ...(user.role === "owner" ? [{ href: "#websites", label: "Websites" }] : []),
+    { href: "#templates", label: "Templates" },
     { href: "#security", label: "Security" },
     { href: "#plan", label: "Plan" },
+    ...(user.role === "owner" ? [{ href: "#coupons", label: "Coupons" }] : []),
     ...(user.role === "owner" ? [{ href: "#billing", label: "Billing" }] : []),
   ];
 
   return (
-    <div className="min-h-screen bg-[#040b1a] text-white">
-      <header className="border-b border-white/10 bg-[#040b1a]/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <BrandLogo href={homeHref} subtitle="Settings" compact />
+    <div className="flex h-screen flex-col overflow-hidden bg-[#070b16] text-white lg:flex-row">
+      <aside className="flex shrink-0 flex-col border-b border-white/10 bg-[#0b1222] lg:h-full lg:w-56 lg:overflow-y-auto lg:border-b-0 lg:border-r">
+        <div className="flex items-center justify-between gap-3 px-4 py-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-white">{user.email}</p>
+            <p className="text-xs capitalize text-white/40">{user.role}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              href={homeHref}
-              className="rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white/90 transition hover:border-cyan-300/40 hover:bg-white/5"
-            >
+          <div className="flex shrink-0 items-center gap-1 lg:hidden">
+            <Link href={homeHref} className="rounded-md px-2 py-1 text-xs text-blue-100 hover:bg-white/5">
               {user.role === "admin" ? "Dashboard" : "Editor"}
             </Link>
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-full px-3 py-2 text-sm text-blue-100 transition hover:bg-white/5 hover:text-white"
-            >
+            <button type="button" onClick={logout} className="rounded-md px-2 py-1 text-xs text-blue-100 hover:bg-white/5">
               Log out
             </button>
           </div>
         </div>
-      </header>
 
-      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-8 lg:flex-row lg:items-start lg:gap-10 lg:py-10">
-        <aside className="lg:sticky lg:top-6 lg:w-56 lg:shrink-0">
-          <p className="mb-3 hidden text-xs font-semibold tracking-[0.16em] text-white/40 uppercase lg:block">
-            Settings
-          </p>
-          <nav
-            className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
-            aria-label="Settings"
+        <nav
+          className="flex gap-1 overflow-x-auto px-2 pb-3 lg:flex-1 lg:flex-col lg:overflow-y-auto lg:px-2 lg:pb-2"
+          aria-label="Settings"
+        >
+          {navItems.map((item) => {
+            const active = activeHash === item.href;
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                className={`relative whitespace-nowrap rounded-md px-3 py-2 text-sm transition ${
+                  active
+                    ? "bg-white/10 text-white before:absolute before:top-1.5 before:bottom-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-cyan-400"
+                    : "text-blue-100/70 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                {item.label}
+              </a>
+            );
+          })}
+          {user.role === "owner" ? (
+            <button
+              type="button"
+              onClick={() => setShowChat(true)}
+              className="whitespace-nowrap rounded-md px-3 py-2 text-left text-sm text-blue-100/70 transition hover:bg-white/5 hover:text-white"
+            >
+              Contact us
+            </button>
+          ) : null}
+        </nav>
+
+        <div className="mt-auto hidden border-t border-white/10 p-3 lg:block">
+          <Link
+            href={homeHref}
+            className="block rounded-md px-3 py-2 text-sm text-blue-100/80 hover:bg-white/5 hover:text-white"
           >
-            {navItems.map((item) => {
-              const active = activeHash === item.href;
-              return (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className={`whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                    active
-                      ? "bg-white/10 text-white"
-                      : "text-blue-100/80 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  {item.label}
-                </a>
-              );
-            })}
-            {user.role === "owner" ? (
+            {user.role === "admin" ? "Dashboard" : "Editor"}
+          </Link>
+          <button
+            type="button"
+            onClick={logout}
+            className="block w-full rounded-md px-3 py-2 text-left text-sm text-blue-100/80 hover:bg-white/5 hover:text-white"
+          >
+            Log out
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="shrink-0 border-b border-white/10 bg-[#040b1a]">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <BrandLogo href={homeHref} subtitle={user.role === "admin" ? "Admin" : "Settings"} compact />
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={homeHref}
+                className="rounded-full border border-cyan-300/40 bg-cyan-400/15 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/25"
+              >
+                {user.role === "admin" ? "Dashboard" : "Editor"}
+              </Link>
               <button
                 type="button"
-                onClick={() => setShowChat(true)}
-                className="whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium text-cyan-100/90 transition hover:bg-cyan-500/10 hover:text-cyan-50"
+                onClick={logout}
+                className="rounded-full px-3 py-2 text-sm text-blue-100 hover:bg-white/5"
               >
-                Contact us
+                Log out
               </button>
-            ) : null}
-          </nav>
-        </aside>
+            </div>
+          </div>
+        </header>
 
-        <main className="min-w-0 flex-1">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
           {activeHash === "#account" ? (
             <section id="account" className={panelClass}>
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-6">
@@ -895,14 +936,14 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="mt-6 max-w-xl space-y-5">
-                <div>
+              <div className="mt-6 grid gap-5 lg:grid-cols-3">
+                <div className="lg:col-span-1">
                   <label className="mb-1.5 block text-sm font-medium text-blue-100">Email</label>
                   <input className={inputClass} value={user.email} disabled readOnly />
                   <p className="mt-1.5 text-xs text-white/40">Email can’t be changed here.</p>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-blue-100">Role</p>
                     <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm capitalize text-white">
@@ -1235,8 +1276,21 @@ export default function ProfilePage() {
             </section>
           ) : null}
 
+          {activeHash === "#templates" ? (
+            <section id="templates">
+              <AdminTemplatesGallery
+                openBase={user.role === "admin" ? "/admin/templates" : null}
+                description={
+                  user.role === "admin"
+                    ? "One-page previews by default. Assigned from business type at draft creation; clients can switch templates in the editor."
+                    : "Every template you can use. Switch one anytime from the editor."
+                }
+              />
+            </section>
+          ) : null}
+
           {activeHash === "#security" ? (
-            <section id="security" className="space-y-6">
+            <section id="security" className="grid gap-6 lg:grid-cols-2 lg:items-start">
               <div className={panelClass}>
                 <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">
                   Security
@@ -1253,7 +1307,7 @@ export default function ProfilePage() {
                       Forgot password?
                     </Link>
                   </p>
-                  <form onSubmit={savePassword} className="mt-5 max-w-xl space-y-4">
+                  <form onSubmit={savePassword} className="mt-5 space-y-4">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-blue-100">
                         Current password
@@ -1323,7 +1377,7 @@ export default function ProfilePage() {
                 </p>
 
                 {user.totpEnabled && !totpSetup ? (
-                  <div className="mt-5 max-w-xl space-y-4">
+                  <div className="mt-5 space-y-4">
                     <p className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
                       Authenticator is on for this account.
                     </p>
@@ -1371,7 +1425,7 @@ export default function ProfilePage() {
                     </button>
                   </div>
                 ) : (
-                  <div className="mt-5 max-w-xl space-y-4">
+                  <div className="mt-5 space-y-4">
                     {!totpSetup ? (
                       <button
                         type="button"
@@ -1439,7 +1493,9 @@ export default function ProfilePage() {
               <p className="mt-1 text-sm text-blue-100/80">
                 {user.role === "admin"
                   ? "Admins are not billed. Manage client invoices from the sites list."
-                  : "Choose or change your package. Starter $9 · Custom $19 · Domain $29 · Pro + PWA $39."}
+                  : user.region === "pakistan"
+                    ? "Choose or change your package. Pakistan prices are shown in PKR."
+                    : "Choose or change your package. Starter $9 · Custom $19 · Domain $29 · Pro + PWA $39."}
               </p>
 
               {user.role === "owner" ? (
@@ -1450,6 +1506,13 @@ export default function ProfilePage() {
                     invoices={invoices}
                     busy={billingBusy}
                     message={billingMsg}
+                    region={user.region || "usa"}
+                    regionLocked={Boolean(user.regionLocked)}
+                    regionPrices={regionPrices}
+                    regions={regions}
+                    onRegionConfirmed={(nextRegion) =>
+                      setUser((current) => (current ? { ...current, region: nextRegion } : current))
+                    }
                     onAction={(action, id, extra = {}) =>
                       billingAction(action, id, { ...extra, returnTo: "plan" })
                     }
@@ -1463,6 +1526,16 @@ export default function ProfilePage() {
                   owner&apos;s offline invoices.
                 </p>
               )}
+            </section>
+          ) : null}
+
+          {activeHash === "#coupons" && user.role === "owner" ? (
+            <section id="coupons" className={panelClass}>
+              <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">Coupons</h1>
+              <p className="mt-1 text-sm text-blue-100/80">
+                Available, used, and expired coupons.
+              </p>
+              <OwnerCoupons />
             </section>
           ) : null}
 
