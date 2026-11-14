@@ -77,6 +77,7 @@ export async function POST(request) {
     // Try to load from pricing_configs if available
     const { getCachedPricing } = await import("@/lib/pricing-cache");
     const pricing = await getCachedPricing();
+    const userRegion = regionCheck.region;
     const pricingConfig = pricing[userRegion]?.[planId];
     
     let priceId = null;
