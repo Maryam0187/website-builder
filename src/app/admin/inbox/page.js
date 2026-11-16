@@ -98,8 +98,8 @@ export default function AdminInboxPage() {
             <Link href="/profile" className="text-xs font-medium text-cyan-200 hover:underline">
               Profile
             </Link>
-            <Link href="/profile#security" className="text-xs font-medium text-cyan-200 hover:underline">
-              Authenticator (2FA)
+            <Link href="/admin/settings" className="text-xs font-medium text-cyan-200 hover:underline">
+              Settings
             </Link>
           </div>
           <p className="mt-2 text-xs text-blue-100">Guest chats and design screenshots</p>

@@ -47,28 +47,16 @@ export default async function AdminHomePage() {
               Open inbox
             </Link>
             <Link
-              href="/admin/pricing"
+              href="/admin/settings#pricing"
               className="rounded-full border border-white/15 px-4 py-2 text-sm hover:bg-white/5"
             >
-              Region pricing
-            </Link>
-            <Link
-              href="/admin/discounts"
-              className="rounded-full border border-white/15 px-4 py-2 text-sm hover:bg-white/5"
-            >
-              Discounts
+              Settings
             </Link>
             <Link
               href="/profile"
               className="rounded-full border border-white/15 px-4 py-2 text-sm hover:bg-white/5"
             >
               Profile
-            </Link>
-            <Link
-              href="/profile#security"
-              className="rounded-full border border-white/15 px-4 py-2 text-sm hover:bg-white/5"
-            >
-              Authenticator (2FA)
             </Link>
             <Link href="/" className="hidden rounded-full border border-white/15 px-4 py-2 text-sm sm:inline-flex">
               Product home

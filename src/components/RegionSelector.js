@@ -67,30 +67,52 @@ export default function RegionSelector({
   );
 }
 
-export function RegionBanner({ region }) {
+export function RegionBanner({ region, onChangeRegion }) {
   const regionInfo = ALL_REGIONS.find(r => r.id === region);
   if (!regionInfo) return null;
 
-  const isPakistan = region === 'pakistan';
+  const isPakistan = region === "pakistan";
 
   return (
-    <div className={`rounded-lg p-4 ${isPakistan ? 'bg-amber-50 border border-amber-200' : 'bg-blue-50 border border-blue-200'}`}>
-      <div className="flex items-start gap-3">
-        <svg className={`w-5 h-5 mt-0.5 ${isPakistan ? 'text-amber-600' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <div className="flex-1">
-          <div className={`font-medium ${isPakistan ? 'text-amber-900' : 'text-blue-900'}`}>
-            {isPakistan ? 'Pakistan Region' : `${regionInfo.name} Region`}
-          </div>
-          <div className={`text-sm mt-1 ${isPakistan ? 'text-amber-700' : 'text-blue-700'}`}>
-            {isPakistan 
-              ? 'Contact us to activate your plan with local payment methods.'
-              : `Pay securely with card (${regionInfo.currency}). Start your subscription instantly.`
-            }
-          </div>
+    <div className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border px-5 py-4 ${
+      isPakistan
+        ? "border-amber-400/25 bg-amber-500/10"
+        : "border-white/10 bg-[#07122a]/80"
+    }`}>
+      <div className="flex min-w-0 items-start gap-3">
+        <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+          isPakistan ? "bg-amber-400/15 text-amber-200" : "bg-cyan-400/15 text-cyan-200"
+        }`}>
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 12h18M12 3c2.2 2.4 3.4 5.5 3.4 9s-1.2 6.6-3.4 9c-2.2-2.4-3.4-5.5-3.4-9s1.2-6.6 3.4-9z" />
+          </svg>
+        </span>
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-white">
+            {regionInfo.name}
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase ${
+              isPakistan ? "bg-amber-400/20 text-amber-100" : "bg-white/10 text-cyan-100"
+            }`}>
+              {regionInfo.currency}
+            </span>
+          </p>
+          <p className={`mt-1 text-sm ${isPakistan ? "text-amber-100/80" : "text-blue-100/75"}`}>
+            {isPakistan
+              ? "Contact us to activate your plan with a local payment method."
+              : "Pay securely with card. Your subscription starts as soon as payment goes through."}
+          </p>
         </div>
       </div>
+      {onChangeRegion ? (
+        <button
+          type="button"
+          onClick={onChangeRegion}
+          className="shrink-0 rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-cyan-100 hover:bg-white/5"
+        >
+          Change region
+        </button>
+      ) : null}
     </div>
   );
 }
