@@ -33,6 +33,7 @@ function mapOwnerSite(s) {
     template: s.content?.template || "other",
     templateLabel: getTemplate(s.content?.template || "other").label,
     planId: s.planId || "free",
+    createdAt: s.createdAt || null,
   };
 }
 

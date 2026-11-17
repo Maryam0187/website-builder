@@ -68,6 +68,7 @@ export default function ProfilePage() {
   const [siteNames, setSiteNames] = useState({});
   const [siteNameBusy, setSiteNameBusy] = useState({});
   const [siteNameStatus, setSiteNameStatus] = useState({});
+  const [siteDeleteBusy, setSiteDeleteBusy] = useState(null);
   const [siteLiveBusy, setSiteLiveBusy] = useState({});
   const [siteLiveStatus, setSiteLiveStatus] = useState({});
   const [goLivePrompt, setGoLivePrompt] = useState(null);
@@ -134,6 +135,7 @@ export default function ProfilePage() {
         template: item.content?.template || "other",
         templateLabel: item.templateLabel || "Other",
         planId: item.planId || "free",
+        createdAt: item.createdAt || null,
       }));
       setSites(mappedSites);
       setSiteNames(
@@ -255,6 +257,39 @@ export default function ProfilePage() {
       }));
     } finally {
       setSiteNameBusy((prev) => ({ ...prev, [siteId]: false }));
+    }
+  }
+
+  async function deleteAdditionalSite(item) {
+    const name = item.name || "this website";
+    const ok = window.confirm(
+      `Delete “${name}”?\n\nThis additional website and its pages will be removed. Your first website stays.`,
+    );
+    if (!ok) return;
+    setSiteDeleteBusy(item.id);
+    try {
+      const res = await fetch(`/api/site?id=${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not delete website");
+      setSites((prev) => {
+        const next = prev.filter((siteItem) => siteItem.id !== item.id);
+        if (site?.id === item.id) {
+          const fallback = next[0];
+          setSite(
+            fallback
+              ? { id: fallback.id, slug: fallback.slug, name: fallback.name, status: fallback.status }
+              : null,
+          );
+        }
+        return next;
+      });
+    } catch (err) {
+      setSiteNameStatus((prev) => ({
+        ...prev,
+        [item.id]: err.message || "Could not delete website",
+      }));
+    } finally {
+      setSiteDeleteBusy(null);
     }
   }
 
@@ -998,6 +1033,15 @@ export default function ProfilePage() {
                 {sites.length > 0 ? (
                   sites.map((item) => {
                     const current = site?.id === item.id;
+                    const primarySiteId = sites.reduce((oldest, candidate) => {
+                      if (!oldest) return candidate;
+                      const oldestTime = new Date(oldest.createdAt || 0).getTime();
+                      const candidateTime = new Date(candidate.createdAt || 0).getTime();
+                      if (candidateTime < oldestTime) return candidate;
+                      if (candidateTime === oldestTime && candidate.id < oldest.id) return candidate;
+                      return oldest;
+                    }, null)?.id;
+                    const canDeleteSite = sites.length > 1 && item.id !== primarySiteId;
                     const status = formatSiteStatus(item.status);
                     const draftName = siteNames[item.id] ?? item.name ?? "";
                     const nameChanged = draftName.trim() !== (item.name || "").trim();
@@ -1066,6 +1110,16 @@ export default function ProfilePage() {
                             {nameBusy ? "Saving…" : "Save name"}
                           </button>
                           {nameStatus ? (
+                          {canDeleteSite ? (
+                            <button
+                              type="button"
+                              disabled={siteDeleteBusy === item.id}
+                              onClick={() => deleteAdditionalSite(item)}
+                              className="rounded-full border border-rose-400/40 px-4 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-500/10 disabled:opacity-50"
+                            >
+                              {siteDeleteBusy === item.id ? "Deleting…" : "Delete website"}
+                            </button>
+                          ) : null}
                             <p
                               className={`text-xs ${
                                 nameStatus === "Saved" ? "text-emerald-300" : "text-cyan-200"
