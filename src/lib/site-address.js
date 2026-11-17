@@ -103,11 +103,11 @@ export async function claimSubdomainForSite(siteId, desiredSubdomain, userId) {
 }
 
 /**
- * Change/update the chosen subdomain for a Custom plan site.
- * Only allowed if the site doesn't have a custom domain (Domain plan).
+ * Change the Technonaire address for a Custom plan site.
+ * Replaces a Starter random subdomain (or a previous chosen one).
+ * Blocked when the site is published on a custom domain.
  */
 export async function updateSubdomainForSite(siteId, newSubdomain, userId) {
-  // Check if site has custom domain
   const { rows: siteRows } = await query(
     `SELECT id, subdomain, custom_domain FROM sites WHERE id = $1 AND owner_id = $2`,
     [siteId, userId]
@@ -122,7 +122,50 @@ export async function updateSubdomainForSite(siteId, newSubdomain, userId) {
     throw new Error("Cannot change subdomain - this site uses a custom domain (Domain plan)");
   }
 
-  return claimSubdomainForSite(siteId, newSubdomain, userId);
+  const normalized = normalizeSubdomain(newSubdomain);
+  if (!normalized) {
+    throw new Error("Subdomain can only contain letters, numbers, and hyphens");
+  }
+  if (isReservedSubdomain(normalized)) {
+    throw new Error("This subdomain is reserved for system use");
+  }
+
+  if (site.subdomain && String(site.subdomain).toLowerCase() === normalized) {
+    return { subdomain: normalized, site };
+  }
+
+  // Ignore this site's current address so a rename is not reported as taken.
+  const { rows: takenRows } = await query(
+    `SELECT id FROM sites WHERE lower(subdomain) = lower($1) AND id <> $2 LIMIT 1`,
+    [normalized, siteId]
+  );
+  if (takenRows.length > 0) {
+    throw new Error("This subdomain is already taken");
+  }
+
+  try {
+    const { rows, rowCount } = await query(
+      `UPDATE sites
+       SET subdomain = $2, updated_at = now()
+       WHERE id = $1 AND owner_id = $3
+       RETURNING *`,
+      [siteId, normalized, userId]
+    );
+
+    if (rowCount === 0) {
+      throw new Error("Site not found");
+    }
+
+    return {
+      subdomain: normalized,
+      site: rows[0],
+    };
+  } catch (err) {
+    if (err?.code === "23505") {
+      throw new Error("This subdomain was just taken by another site");
+    }
+    throw err;
+  }
 }
 
 /**
