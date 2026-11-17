@@ -1277,11 +1277,12 @@ export default function ProfilePage() {
           {activeHash === "#templates" ? (
             <section id="templates">
               <AdminTemplatesGallery
-                openBase={user.role === "admin" ? "/admin/templates" : null}
+                openBase={user.role === "admin" ? "/admin/templates" : "/templates"}
+                actionLabel={user.role === "admin" ? "Open template" : "View template"}
                 description={
                   user.role === "admin"
                     ? "One-page previews by default. Assigned from business type at draft creation; clients can switch templates in the editor."
-                    : "Every template you can use. Switch one anytime from the editor."
+                    : "Click a template to preview it. Apply adds that look to your website."
                 }
               />
             </section>

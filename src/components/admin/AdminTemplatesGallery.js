@@ -5,6 +5,7 @@ import { listTemplates } from "@/lib/templates";
 
 export default function AdminTemplatesGallery({
   openBase = "/admin/templates",
+  actionLabel = "Open template",
   description = "One-page previews by default. Assigned from business type at draft creation; clients can switch templates in the editor. Extra sections are added from the sites list (navbar).",
 }) {
   const templates = listTemplates();
@@ -72,7 +73,7 @@ export default function AdminTemplatesGallery({
                     href={href}
                     className="inline-flex rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2 text-xs font-semibold text-white"
                   >
-                    Open template
+                    {actionLabel}
                   </Link>
                 ) : null}
               </div>
