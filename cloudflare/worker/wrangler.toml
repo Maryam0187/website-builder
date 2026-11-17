@@ -4,26 +4,16 @@
 name = "technonaire-website-proxy"
 main = "worker.js"
 compatibility_date = "2024-01-01"
+workers_dev = false
 
-# Environment variables
-# Set RAILWAY_ORIGIN to your Railway app domain
+# Must stay above [vars]. Keys under [vars] are worker bindings, not routes.
+[[routes]]
+pattern = "*.technonairebuilder.com/*"
+zone_name = "technonairebuilder.com"
+
+[[routes]]
+pattern = "technonairebuilder.com/*"
+zone_name = "technonairebuilder.com"
+
 [vars]
-RAILWAY_ORIGIN = "website-builder-production-0175.up.railway.app"
-
-# Custom domain routes
-# Add your custom domains here as they're created for customers
-# Pattern: domain.com/* and www.domain.com/*
-# 
-# Example:
-# routes = [
-#   { pattern = "mybusiness.com/*", custom_domain = true },
-#   { pattern = "www.mybusiness.com/*", custom_domain = true },
-# ]
-#
-# Or use the wildcard pattern for all domains:
-# routes = [
-#   { pattern = "*/*", custom_domain = true }
-# ]
-
-# For production, you can route all traffic through the worker
-# by setting up Custom Hostnames to point to this worker
+RAILWAY_ORIGIN = "builder.technonaire.com"

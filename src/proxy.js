@@ -1,13 +1,28 @@
 import { NextResponse } from "next/server";
 import { subdomainFromHost, siteHostRoot } from "@/lib/site-host";
 
+function firstHostname(value) {
+  return String(value || "")
+    .split(",")[0]
+    .split(":")[0]
+    .trim()
+    .toLowerCase();
+}
+
+function forwardedHostname(request) {
+  // X-TN-Forwarded-Host is set by the Cloudflare worker and is not replaced
+  // by Railway. X-Forwarded-Host remains as a fallback.
+  return (
+    request.headers.get("x-tn-forwarded-host") ||
+    request.headers.get("x-forwarded-host") ||
+    ""
+  );
+}
+
 function requestHostname(request) {
-  // Check X-Forwarded-Host first (for Cloudflare Worker proxy)
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  if (forwardedHost) {
-    return forwardedHost.split(":")[0].trim().toLowerCase();
-  }
-  return (request.headers.get("host") || "").split(":")[0].trim().toLowerCase();
+  const forwardedHost = forwardedHostname(request);
+  if (forwardedHost) return firstHostname(forwardedHost);
+  return firstHostname(request.headers.get("host") || "");
 }
 
 function appHostnames() {
@@ -42,7 +57,7 @@ function appHostnames() {
  * - custom domain → /site/custom-domain/[domain]/...
  */
 export function proxy(request) {
-  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+  const host = forwardedHostname(request) || request.headers.get("host") || "";
   const hostname = requestHostname(request);
   const pathname = request.nextUrl.pathname;
 

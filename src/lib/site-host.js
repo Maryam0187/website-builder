@@ -80,6 +80,7 @@ export function publicUrlForSubdomain(subdomain, { path = "", root = publicSiteH
  */
 export function subdomainFromHost(hostHeader, root = siteHostRoot()) {
   const host = String(hostHeader || "")
+    .split(",")[0]
     .split(":")[0]
     .trim()
     .toLowerCase();
