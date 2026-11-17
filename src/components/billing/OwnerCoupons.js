@@ -128,7 +128,7 @@ export default function OwnerCoupons() {
                       <div className="min-w-0 lg:w-56 lg:shrink-0">
                         <div className="flex items-center gap-2">
                           <p className="truncate font-mono text-lg font-semibold tracking-[0.08em] text-white">
-                            {coupon.code || "Launch offer"}
+                            {coupon.code || "Special offer"}
                           </p>
                           <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold tracking-wide text-blue-100 uppercase">
                             {coupon.type === "promotion" ? "Offer" : "Coupon"}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getLaunchPromotion, publicOffer } from "@/lib/discounts";
+import { getCurrentUser } from "@/lib/auth";
+import { listLaunchPromotions, publicOffer, userRedeemedDiscount } from "@/lib/discounts";
 
 /**
  * GET /api/pricing/launch-promotion
@@ -7,62 +8,25 @@ import { getLaunchPromotion, publicOffer } from "@/lib/discounts";
  */
 export async function GET() {
   try {
-    const promotion = await getLaunchPromotion();
-    
-    if (!promotion) {
-      return NextResponse.json({
-        available: false,
-        offer: null,
-        countdown: null,
-        spotsRemaining: null,
-        totalSpots: null,
-      });
+    const promotions = await listLaunchPromotions();
+    const user = await getCurrentUser();
+    const offers = [];
+    for (const promotion of promotions) {
+      if (user && await userRedeemedDiscount(promotion.id, user.id)) continue;
+      const offer = publicOffer(promotion);
+      if (offer) offers.push(offer);
     }
-
-    // Calculate time remaining
-    let countdown = null;
-    if (promotion.expiry_date) {
-      const now = new Date();
-      const expiryDate = new Date(promotion.expiry_date);
-      const msRemaining = expiryDate - now;
-      const daysRemaining = Math.ceil(msRemaining / (1000 * 60 * 60 * 24));
-      
-      countdown = {
-        expiryDate: promotion.expiry_date,
-        daysRemaining: Math.max(0, daysRemaining),
-        hoursRemaining: Math.max(0, Math.ceil(msRemaining / (1000 * 60 * 60))),
-      };
-    }
-
-    // Spots remaining (only if max_redemptions is set)
-    let spotsRemaining = null;
-    let totalSpots = null;
-    if (promotion.max_redemptions) {
-      spotsRemaining = promotion.max_redemptions - promotion.used_count;
-      totalSpots = promotion.max_redemptions;
-    }
-
-    const offer = publicOffer(promotion);
+    const offer = offers[0] || null;
     return NextResponse.json({
-      available: true,
+      available: offers.length > 0,
       offer,
-      countdown,
-      spotsRemaining,
-      totalSpots,
-      discount: {
-        name: promotion.name,
-        valueType: promotion.value_type,
-        valueAmount: promotion.value_amount,
-        durationMonths: promotion.duration_months,
-        applicablePlans: offer.applicablePlans,
-        billingInterval: offer.billingInterval,
-      },
+      offers,
     });
     
   } catch (error) {
     console.error("GET /api/pricing/launch-promotion error:", error);
     return NextResponse.json(
-      { available: false, error: "Failed to fetch launch promotion" },
+      { available: false, error: "Failed to fetch special offer" },
       { status: 500 }
     );
   }

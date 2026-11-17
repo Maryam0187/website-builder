@@ -1604,6 +1604,7 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
     billingInterval: interval,
     couponCode,
     fallbackCents: plan.priceCents,
+    userId,
   });
   if (quoted.couponError) throw new Error(quoted.couponError);
   if (quoted.discount && !quoted.stripeCouponId) {
@@ -2197,6 +2198,7 @@ export async function subscribeWithSavedCard(userId, planId = "starter", { billi
     billingInterval: interval,
     couponCode,
     fallbackCents: plan.priceCents,
+    userId,
   });
   if (quoted.couponError) throw new Error(quoted.couponError);
   if (quoted.discount && !quoted.stripeCouponId) {

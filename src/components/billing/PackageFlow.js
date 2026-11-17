@@ -10,6 +10,7 @@ import { ALL_REGIONS } from "@/lib/region-detection";
 import {
   formatPkr,
   formatRegionAmount,
+  offerFits,
   offerPhrase,
   pickOffer,
   savingsFor,
@@ -35,6 +36,34 @@ function formatDate(value) {
 }
 
 const SITE_HOST_ROOT = process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com";
+
+function amountForOffer(offer, interval) {
+  if (!offer) return null;
+  if (interval === "yearly" && offer.yearlyValueAmount != null && offer.yearlyValueAmount !== "") {
+    return { ...offer, valueAmount: Number(offer.yearlyValueAmount) };
+  }
+  return offer;
+}
+
+function launchOfferFor(offers, planId, interval, cents) {
+  const fitting = (offers || [])
+    .map((offer) => amountForOffer(offer, interval))
+    .filter((offer) => offerFits(offer, planId, interval));
+  const specific = fitting.filter((offer) => offer.billingInterval === interval);
+  const pool = specific.length ? specific : fitting;
+  return pool.reduce((best, offer) => {
+    if (!best) return offer;
+    return savingsFor(cents, offer) > savingsFor(cents, best) ? offer : best;
+  }, null);
+}
+
+function bannerOfferFor(offers, interval) {
+  const fitting = (offers || [])
+    .map((offer) => amountForOffer(offer, interval))
+    .filter((offer) => offer?.valueType && (!offer.billingInterval || offer.billingInterval === interval));
+  const specific = fitting.filter((offer) => offer.billingInterval === interval);
+  return specific[0] || fitting[0] || null;
+}
 
 function featureList(features) {
   const address =
@@ -155,14 +184,14 @@ export default function PackageFlow({
   const [showProContactDialog, setShowProContactDialog] = useState(false);
   const [pendingPurchase, setPendingPurchase] = useState(null);
   const [billingInterval, setBillingInterval] = useState("yearly");
-  const [launchOffer, setLaunchOffer] = useState(null);
+  const [launchOffers, setLaunchOffers] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
     fetch("/api/pricing/launch-promotion")
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled) setLaunchOffer(data.offer || null);
+        if (!cancelled) setLaunchOffers(data.offers || (data.offer ? [data.offer] : []));
       })
       .catch(() => {});
     return () => {
@@ -236,6 +265,7 @@ export default function PackageFlow({
     billingInterval,
     couponCode: "",
   };
+  const bannerOffer = bannerOfferFor(launchOffers, billingInterval);
   const shopPackages = (
     billing?.shopPackages?.length > 0
       ? billing.shopPackages
@@ -243,7 +273,13 @@ export default function PackageFlow({
   ).map((plan) => {
     const priced = withRegionPricing(plan, draftRegion, regionPrices, billingInterval);
     if (!priced || priced.priceLabel === "Contact us" || !(Number(priced.priceCents) > 0)) return priced;
-    const offer = pickOffer(launchOffer, null, priced.id, billingInterval, priced.priceCents);
+    const offer = pickOffer(
+      launchOfferFor(launchOffers, priced.id, billingInterval, priced.priceCents),
+      null,
+      priced.id,
+      billingInterval,
+      priced.priceCents,
+    );
     const saved = savingsFor(priced.priceCents, offer);
     if (!offer || saved <= 0) return priced;
     const finalCents = Math.max(0, priced.priceCents - saved);
@@ -416,21 +452,34 @@ export default function PackageFlow({
                 {billingInterval === "yearly" ? "Pay for 10 months and get the full year." : ""}
               </p>
             </div>
-            {launchOffer?.valueType ? (
-              <div className="mt-4 max-w-xl rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-50">
-                <p className="font-semibold">{launchOffer.name}</p>
-                <p className="mt-1 text-cyan-100">
-                  {offerPhrase(launchOffer)}
-                  {launchOffer.daysRemaining != null
-                    ? ` · Offer ends in ${launchOffer.daysRemaining} day${launchOffer.daysRemaining === 1 ? "" : "s"}`
-                    : ""}
-                  {launchOffer.spotsRemaining != null
-                    ? ` · ${launchOffer.spotsRemaining} of ${launchOffer.totalSpots} left`
-                    : ""}
-                  {launchOffer.billingInterval
-                    ? ` · ${launchOffer.billingInterval} billing`
-                    : ""}
-                </p>
+            {bannerOffer?.valueType ? (
+              <div className="offer-banner relative mx-auto mt-4 max-w-3xl overflow-hidden rounded-2xl border border-cyan-300/40 bg-gradient-to-r from-cyan-500/25 via-[#0c3a5a] to-blue-600/25 px-5 py-4 text-center">
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    backgroundImage:
+                      "radial-gradient(ellipse 60% 80% at 50% 0%, rgba(34,211,238,0.28), transparent 70%)",
+                  }}
+                />
+                <div className="offer-banner-sweep pointer-events-none" />
+                <div className="relative">
+                  <p className="inline-flex items-center justify-center gap-2 text-[11px] font-bold tracking-[0.16em] text-cyan-200 uppercase">
+                    <span className="relative flex h-2 w-2">
+                      <span className="offer-banner-ping absolute inline-flex h-full w-full rounded-full bg-cyan-200" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
+                    </span>
+                    Special offer
+                  </p>
+                  <p className="mt-1 font-[family-name:var(--font-display)] text-xl font-semibold text-white">
+                    {offerPhrase(bannerOffer)}
+                  </p>
+                  <p className="mt-1 text-sm text-cyan-100/80">
+                    One time per customer
+                    {bannerOffer.daysRemaining != null
+                      ? ` · Ends in ${bannerOffer.daysRemaining} day${bannerOffer.daysRemaining === 1 ? "" : "s"}`
+                      : ""}
+                  </p>
+                </div>
               </div>
             ) : null}
             <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

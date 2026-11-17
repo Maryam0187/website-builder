@@ -13,6 +13,7 @@ export async function quotePlanCharge({
   billingInterval = "monthly",
   couponCode = "",
   fallbackCents = null,
+  userId = null,
 }) {
   const interval = billingInterval === "yearly" ? "yearly" : "monthly";
   const pricing = await getCachedPricing();
@@ -28,10 +29,11 @@ export async function quotePlanCharge({
     billingInterval: interval,
     code: couponCode,
     amountCents: original,
+    userId,
   });
   let stripeCouponId = null;
   if (quote.discount && currency === "usd") {
-    stripeCouponId = await ensureStripeCoupon(quote.discount);
+    stripeCouponId = await ensureStripeCoupon(quote.discount, interval);
   }
   const priceIds = interval === "yearly" ? null : row?.stripePriceIds;
   const stripePriceId = kind === "extra" ? priceIds?.extra || null : priceIds?.first || null;

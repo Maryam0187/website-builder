@@ -3,7 +3,7 @@ import { denyIfMustChangePassword, requireUser } from "@/lib/auth";
 import { listDiscounts } from "@/lib/discounts";
 
 export async function GET() {
-  const user = await requireUser(["owner", "admin"]);
+  const user = await requireUser(["admin"]);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const blocked = denyIfMustChangePassword(user);
   if (blocked) return blocked;

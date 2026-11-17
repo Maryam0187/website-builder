@@ -81,6 +81,7 @@ export async function POST(request) {
       billingInterval,
       couponCode,
       fallbackCents: mode === "buy-slot" ? plan.additionalPriceCents : plan.priceCents,
+      userId: freshUser.id,
     });
     if (quoted.couponError) {
       return NextResponse.json({ error: quoted.couponError }, { status: 400 });

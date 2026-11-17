@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import {
-  getLaunchPromotion,
+  selectLaunchPromotion,
   getCouponByCode,
   validateDiscountApplicability,
   calculateDiscountAmount,
   chooseBestDiscount,
+  discountForInterval,
+  couponIsForUser,
   publicOffer,
 } from "@/lib/discounts";
 import { getRegionPricingAsync } from "@/lib/pricing";
@@ -56,15 +58,19 @@ export async function POST(request) {
 
     const originalAmount = pricing.firstSite;
 
-    // Get launch promotion (always check, auto-applies if available)
-    const promotion = await getLaunchPromotion();
+    const promotion = await selectLaunchPromotion({
+      planId,
+      billingInterval,
+      amountCents: originalAmount,
+      userId: user.id,
+    });
     
     // Get coupon if code provided
     let coupon = null;
     if (code && code.trim()) {
       coupon = await getCouponByCode(code.trim());
       
-      if (!coupon) {
+      if (!coupon || !couponIsForUser(coupon, user.id)) {
         return NextResponse.json({
           valid: false,
           error: "Invalid or expired coupon code",
@@ -78,13 +84,10 @@ export async function POST(request) {
           error: "This coupon is not applicable to the selected plan or billing interval",
         });
       }
+      coupon = discountForInterval(coupon, billingInterval);
     }
 
-    // Validate promotion applicability
-    let applicablePromotion = null;
-    if (promotion && validateDiscountApplicability(promotion, planId, billingInterval)) {
-      applicablePromotion = promotion;
-    }
+    const applicablePromotion = promotion;
 
     // Choose best discount (promotion vs coupon, don't stack)
     const bestDiscount = chooseBestDiscount(applicablePromotion, coupon, originalAmount);
@@ -93,7 +96,7 @@ export async function POST(request) {
       return NextResponse.json({
         valid: true,
         discount: null,
-        message: "Launch promotion gives better savings",
+        message: "The special offer gives a better saving",
       });
     }
 

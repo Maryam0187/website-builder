@@ -321,6 +321,7 @@ CREATE TABLE IF NOT EXISTS discounts (
   name TEXT NOT NULL,
   value_type TEXT NOT NULL CHECK (value_type IN ('percent', 'fixed')),
   value_amount INT NOT NULL,
+  yearly_value_amount INT NULL,
   duration_type TEXT NOT NULL CHECK (duration_type IN ('once', 'repeating', 'forever')),
   duration_months INT NULL,
   max_redemptions INT NULL,
@@ -330,7 +331,9 @@ CREATE TABLE IF NOT EXISTS discounts (
   expiry_date TIMESTAMPTZ NULL,
   active BOOLEAN NOT NULL DEFAULT true,
   stripe_coupon_id TEXT NULL,
+  stripe_coupon_yearly_id TEXT NULL,
   stripe_promo_code_id TEXT NULL,
+  assigned_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
   created_by_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -350,11 +353,27 @@ CREATE INDEX IF NOT EXISTS idx_discounts_active ON discounts(active);
 CREATE INDEX IF NOT EXISTS idx_discount_redemptions_user ON discount_redemptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_discount_redemptions_discount ON discount_redemptions(discount_id);
 
+CREATE TABLE IF NOT EXISTS discount_assignees (
+  discount_id BIGINT NOT NULL REFERENCES discounts(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (discount_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_discount_assignees_user ON discount_assignees(user_id);
+
 -- Add yearly pricing support to pricing_configs
 ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS first_site_cents_yearly INT NULL;
 ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS extra_site_cents_yearly INT NULL;
 ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS stripe_first_site_price_id_yearly TEXT NULL;
 ALTER TABLE pricing_configs ADD COLUMN IF NOT EXISTS stripe_extra_site_price_id_yearly TEXT NULL;
+
+ALTER TABLE discounts ADD COLUMN IF NOT EXISTS yearly_value_amount INT NULL;
+ALTER TABLE discounts ADD COLUMN IF NOT EXISTS stripe_coupon_yearly_id TEXT NULL;
+ALTER TABLE discounts ADD COLUMN IF NOT EXISTS assigned_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL;
+
+INSERT INTO discount_assignees (discount_id, user_id)
+SELECT id, assigned_user_id FROM discounts
+WHERE assigned_user_id IS NOT NULL
+ON CONFLICT DO NOTHING;
 
 -- Track applied discount on users
 ALTER TABLE users ADD COLUMN IF NOT EXISTS applied_discount_id BIGINT NULL REFERENCES discounts(id) ON DELETE SET NULL;

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import PackageFlow from "@/components/billing/PackageFlow";
-import OwnerCoupons from "@/components/billing/OwnerCoupons";
 import AdminTemplatesGallery from "@/components/admin/AdminTemplatesGallery";
 import SupportChatSidebar from "@/components/messaging/SupportChatSidebar";
 import GoLiveDialog from "@/components/site/GoLiveDialog";
@@ -29,14 +28,14 @@ function normalizeSettingsHash(hash) {
     .map((p) => p.trim())
     .filter(Boolean)[0];
   const h = first ? `#${first}` : "";
-  if (!h || h === "#" || h === "#profile") return "#account";
+  if (!h || h === "#" || h === "#profile" || h === "#coupons") return "#account";
   if (h === "#password" || h === "#2fa") return "#security";
   return h;
 }
 
 function profileSectionFromReturn(value, fallback = "#plan") {
   const next = normalizeSettingsHash(`#${String(value || "").replace(/^#/, "")}`);
-  if (["#plan", "#billing", "#coupons", "#websites", "#templates", "#account", "#security"].includes(next)) return next;
+  if (["#plan", "#billing", "#websites", "#templates", "#account", "#security"].includes(next)) return next;
   return normalizeSettingsHash(fallback);
 }
 
@@ -822,7 +821,6 @@ export default function ProfilePage() {
     { href: "#templates", label: "Templates" },
     { href: "#security", label: "Security" },
     { href: "#plan", label: "Plan" },
-    ...(user.role === "owner" ? [{ href: "#coupons", label: "Coupons" }] : []),
     ...(user.role === "owner" ? [{ href: "#billing", label: "Billing" }] : []),
   ];
 
@@ -1526,16 +1524,6 @@ export default function ProfilePage() {
                   owner&apos;s offline invoices.
                 </p>
               )}
-            </section>
-          ) : null}
-
-          {activeHash === "#coupons" && user.role === "owner" ? (
-            <section id="coupons" className={panelClass}>
-              <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">Coupons</h1>
-              <p className="mt-1 text-sm text-blue-100/80">
-                Available, used, and expired coupons.
-              </p>
-              <OwnerCoupons />
             </section>
           ) : null}
 

@@ -10,8 +10,7 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import { RegionBanner } from "@/components/RegionSelector";
-import { formatRegionAmount, offerPhrase } from "@/lib/plan-price-label";
-import { discountBuckets } from "@/lib/discount-buckets";
+import { formatRegionAmount, offerFits, offerPhrase } from "@/lib/plan-price-label";
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
 const stripePromise = PUBLISHABLE_KEY ? loadStripe(PUBLISHABLE_KEY) : null;
@@ -101,9 +100,10 @@ function CheckoutContent() {
   const [appliedCode, setAppliedCode] = useState(null);
   const [couponError, setCouponError] = useState("");
   const [couponBusy, setCouponBusy] = useState(false);
-  const [couponOpen, setCouponOpen] = useState(false);
-  const [coupons, setCoupons] = useState([]);
+  const [personalCoupons, setPersonalCoupons] = useState([]);
+  const [personalReady, setPersonalReady] = useState(false);
   const checkoutReady = useRef(false);
+  const personalDismissed = useRef(false);
 
   const planId = searchParams.get("planId") || "starter";
   const slotPlanId = searchParams.get("slotPlanId");
@@ -118,21 +118,32 @@ function CheckoutContent() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const res = await fetch("/api/coupons");
-      const data = await res.json().catch(() => ({}));
-      if (!cancelled && res.ok) setCoupons(data.coupons || []);
-    })();
+    fetch("/api/checkout/my-coupons")
+      .then((res) => res.json().then((data) => ({ ok: res.ok, data })).catch(() => ({ ok: false, data: {} })))
+      .then(({ ok, data }) => {
+        if (cancelled) return;
+        const coupons = ok && Array.isArray(data.coupons) ? data.coupons : [];
+        const fit = coupons.find((coupon) => offerFits(coupon, slotPlanId || planId, billingInterval));
+        setPersonalCoupons(coupons);
+        if (!urlCode && fit?.code && !personalDismissed.current) {
+          setAppliedCode((current) => current || fit.code);
+          setCouponInput((current) => current || fit.code);
+        }
+        setPersonalReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setPersonalReady(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
-  
+  }, [planId, slotPlanId, billingInterval, urlCode]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function initCheckout() {
-      if (appliedCode == null) return;
+      if (appliedCode == null || !personalReady) return;
       const refreshing = checkoutReady.current;
       try {
         if (refreshing) setCouponBusy(true);
@@ -205,7 +216,7 @@ function CheckoutContent() {
     return () => {
       cancelled = true;
     };
-  }, [planId, slotPlanId, mode, billingInterval, appliedCode]);
+  }, [planId, slotPlanId, mode, billingInterval, appliedCode, personalReady]);
 
   function applyCoupon(code) {
     const next = String(code || "").trim().toUpperCase();
@@ -213,64 +224,6 @@ function CheckoutContent() {
     setCouponError("");
     setCouponInput(next);
     setAppliedCode(next);
-  }
-
-  const checkoutPlanId = slotPlanId || planId;
-  const availableCoupons = coupons.filter(
-    (coupon) => coupon.type === "coupon" && coupon.code && discountBuckets(coupon).available,
-  );
-
-  function couponFit(coupon) {
-    const plans = coupon.applicablePlans || [];
-    const planOk = !plans.length || plans.includes(checkoutPlanId);
-    const intervalOk = !coupon.billingInterval || coupon.billingInterval === billingInterval;
-    let reason = "";
-    if (!planOk) reason = "Not for this plan";
-    else if (!intervalOk) reason = coupon.billingInterval === "yearly" ? "Yearly only" : "Monthly only";
-    return { ok: planOk && intervalOk, reason };
-  }
-
-  const orderedCoupons = [...availableCoupons].sort((a, b) => Number(couponFit(b).ok) - Number(couponFit(a).ok));
-
-  function couponValue(coupon) {
-    if (coupon.valueType === "percent") return `${coupon.valueAmount}% off`;
-    const currency = String(charge?.currency || "usd").toUpperCase();
-    return `${formatRegionAmount(Number(coupon.valueAmount) || 0, currency)} off`;
-  }
-
-  function couponTerms(coupon) {
-    const terms = [];
-    if (!coupon.applicablePlans?.length) terms.push("Valid on all plans.");
-    else {
-      const plans = coupon.applicablePlans
-        .map((id) => id.charAt(0).toUpperCase() + id.slice(1))
-        .join(", ");
-      terms.push(`Valid on ${plans}.`);
-    }
-    if (coupon.billingInterval === "monthly") terms.push("Valid on monthly billing.");
-    else if (coupon.billingInterval === "yearly") terms.push("Valid on yearly billing.");
-    else terms.push("Valid on monthly and yearly billing.");
-    if (coupon.durationType === "once") terms.push("Valid on the first payment only.");
-    else if (coupon.durationType === "forever") terms.push("Valid for the life of the subscription.");
-    else {
-      const months = Number(coupon.durationMonths) || 1;
-      terms.push(`Valid for ${months} month${months === 1 ? "" : "s"}.`);
-    }
-    if (coupon.expiryDate) {
-      const date = new Date(coupon.expiryDate);
-      terms.push(
-        Number.isNaN(date.getTime())
-          ? "No end date."
-          : `Expires ${date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}.`,
-      );
-    } else {
-      terms.push("No end date.");
-    }
-    if (coupon.maxRedemptions != null) {
-      const left = Math.max(0, Number(coupon.maxRedemptions) - (Number(coupon.usedCount) || 0));
-      terms.push(`${left} of ${coupon.maxRedemptions} uses left.`);
-    }
-    return terms;
   }
 
   if (loading) {
@@ -462,20 +415,58 @@ function CheckoutContent() {
                     applyCoupon(couponInput);
                   }}
                 >
-                  <p className="text-sm font-semibold text-white">Coupons</p>
+                  <p className="text-sm font-semibold text-white">Coupon</p>
                   <p className="mt-0.5 text-xs text-blue-200/60">
                     {appliedCode && !couponError && !couponBusy && charge?.discount
                       ? offerPhrase(charge.discount) || charge.discount.name
-                      : "Open the list to apply a coupon, or enter a code."}
+                      : personalCoupons.length
+                        ? "Your coupon is below. A special offer still applies on its own."
+                        : "A special offer is applied on its own. Have a private code? Enter it here."}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setCouponOpen(true)}
-                    className="mt-3 w-full rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white hover:border-cyan-400/40"
-                  >
-                    View coupons{availableCoupons.length ? ` (${availableCoupons.length})` : ""}
-                  </button>
+                  {personalCoupons.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      {personalCoupons.map((coupon) => {
+                        const applied = appliedCode === coupon.code && !couponError && !couponBusy;
+                        return (
+                          <div
+                            key={coupon.id}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-cyan-300/30 bg-gradient-to-r from-cyan-500/20 via-[#0c3a5a] to-blue-600/20 px-4 py-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-bold tracking-[0.14em] text-cyan-200 uppercase">Your coupon</p>
+                              <p className="mt-0.5 text-sm font-semibold text-white">{offerPhrase(coupon) || coupon.name}</p>
+                              <p className="truncate text-xs font-bold tracking-[0.12em] text-cyan-100">{coupon.code}</p>
+                            </div>
+                            {applied ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  personalDismissed.current = true;
+                                  setCouponInput("");
+                                  setCouponError("");
+                                  setAppliedCode("");
+                                }}
+                                className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+                              >
+                                Remove
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => applyCoupon(coupon.code)}
+                                disabled={couponBusy}
+                                className="shrink-0 rounded-full bg-cyan-400 px-3 py-1.5 text-xs font-bold text-[#041018] hover:bg-cyan-300 disabled:opacity-50"
+                              >
+                                Apply
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   {appliedCode && !couponError && !couponBusy ? (
+                    personalCoupons.some((coupon) => coupon.code === appliedCode) ? null : (
                     <div className="mt-3 flex items-center justify-between gap-3 rounded-full border border-emerald-400/35 bg-emerald-500/15 py-1.5 pl-4 pr-1.5">
                       <span className="truncate text-sm font-bold tracking-[0.12em] text-emerald-100">{appliedCode}</span>
                       <button
@@ -490,6 +481,7 @@ function CheckoutContent() {
                         Remove
                       </button>
                     </div>
+                    )
                   ) : (
                     <div className="mt-3 flex">
                       <input
@@ -551,96 +543,6 @@ function CheckoutContent() {
           </button>
         </div>
       </div>
-      {couponOpen ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
-          role="presentation"
-          onClick={() => setCouponOpen(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="checkout-coupons-title"
-            className="flex max-h-[min(32rem,85vh)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#07122a] p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 id="checkout-coupons-title" className="font-[family-name:var(--font-display)] text-xl font-semibold text-white">
-                  Coupons
-                </h3>
-                <p className="mt-1 text-sm text-blue-100/75">Choose one and apply it to this order.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCouponOpen(false)}
-                className="rounded-full px-3 py-1.5 text-sm text-blue-100 hover:bg-white/5"
-              >
-                Close
-              </button>
-            </div>
-            {availableCoupons.length ? (
-              <ul className="mt-5 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-2 [scrollbar-color:rgba(125,211,252,0.45)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-cyan-200/40 [&::-webkit-scrollbar-track]:bg-transparent">
-                {orderedCoupons.map((coupon) => {
-                  const fit = couponFit(coupon);
-                  const selected = appliedCode === coupon.code && !couponError && !couponBusy;
-                  const applying = couponBusy && appliedCode === coupon.code;
-                  return (
-                    <li
-                      key={coupon.id}
-                      className={`rounded-2xl border px-4 py-3 ${
-                        selected ? "border-emerald-400/40 bg-emerald-500/15" : "border-white/10 bg-white/5"
-                      } ${fit.ok ? "" : "opacity-60"}`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-mono text-sm font-semibold tracking-[0.08em] text-white">
-                            {coupon.code}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-blue-200/70">
-                            {coupon.name}
-                            {fit.reason ? ` · ${fit.reason}` : ""}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <span className={`text-sm font-semibold ${selected ? "text-emerald-100" : "text-cyan-100"}`}>
-                            {couponValue(coupon)}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={!fit.ok || couponBusy || selected}
-                            onClick={() => {
-                              applyCoupon(coupon.code);
-                              setCouponOpen(false);
-                            }}
-                            className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-bold text-[#041018] hover:bg-cyan-300 disabled:opacity-50"
-                          >
-                            {applying ? "Applying…" : selected ? "Applied" : "Apply"}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mt-3 border-t border-white/10 pt-3">
-                        <p className="text-[10px] font-semibold tracking-[0.12em] text-blue-200/50 uppercase">
-                          Terms
-                        </p>
-                        <ul className="mt-1.5 space-y-1 text-xs leading-5 text-blue-100/80">
-                          {couponTerms(coupon).map((term) => (
-                            <li key={term}>{term}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="mt-6 rounded-2xl border border-dashed border-white/15 px-4 py-8 text-center text-sm text-blue-200/70">
-                No coupons are available right now.
-              </p>
-            )}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

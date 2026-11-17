@@ -6,12 +6,33 @@ import {
   listDiscounts,
   createDiscount,
   updateDiscount,
+  deleteDiscount,
   getDiscountRedemptions,
   getCouponByCode,
+  searchCustomersByEmail,
+  findCustomer,
 } from "@/lib/discounts";
 import Stripe from "stripe";
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+async function resolveAssignedCustomers(body) {
+  const raw = Array.isArray(body.assignedUserIds)
+    ? body.assignedUserIds
+    : Array.isArray(body.assignedCustomers)
+      ? body.assignedCustomers.map((person) => person?.id)
+      : body.assignedUserId
+        ? [body.assignedUserId]
+        : [];
+  const ids = [];
+  for (const value of raw) {
+    if (value == null || value === "") continue;
+    const customer = await findCustomer(value);
+    if (!customer) return { error: "No customer with that email" };
+    if (!ids.some((id) => String(id) === String(customer.id))) ids.push(customer.id);
+  }
+  return { ids };
+}
 
 /**
  * GET /api/admin/discounts
@@ -36,6 +57,13 @@ export async function GET(request) {
     if (action === 'redemptions' && discountId) {
       const redemptions = await getDiscountRedemptions(discountId, 100);
       return NextResponse.json({ redemptions });
+    }
+
+    if (action === "search-users") {
+      const users = await searchCustomersByEmail(searchParams.get("q"));
+      return NextResponse.json({
+        users: users.map((row) => ({ id: row.id, email: row.email, name: row.name })),
+      });
     }
     
     const discounts = await listDiscounts();
@@ -84,6 +112,7 @@ export async function POST(request) {
         name,
         valueType,
         valueAmount,
+        yearlyValueAmount,
         durationType,
         durationMonths,
         maxRedemptions,
@@ -107,8 +136,18 @@ export async function POST(request) {
           { status: 400 }
         );
       }
+      const yearlyAmount = yearlyValueAmount == null || yearlyValueAmount === ""
+        ? null
+        : Number(yearlyValueAmount);
+      if (yearlyAmount != null && valueType === "percent" && (yearlyAmount < 1 || yearlyAmount > 100)) {
+        return NextResponse.json(
+          { error: "Yearly percent discount must be between 1 and 100" },
+          { status: 400 }
+        );
+      }
       
       let stripeCouponId = null;
+      let stripeCouponYearlyId = null;
       let stripePromoCodeId = null;
       
       // Create Stripe coupon if requested and Stripe is configured
@@ -140,6 +179,13 @@ export async function POST(request) {
           
           const stripeCoupon = await stripe.coupons.create(couponParams);
           stripeCouponId = stripeCoupon.id;
+          if (yearlyAmount != null) {
+            const yearlyParams = { ...couponParams, name: `${name} yearly` };
+            if (valueType === "percent") yearlyParams.percent_off = yearlyAmount;
+            else yearlyParams.amount_off = yearlyAmount;
+            const yearlyCoupon = await stripe.coupons.create(yearlyParams);
+            stripeCouponYearlyId = yearlyCoupon.id;
+          }
           
           // Create promotion code if this is a coupon with a code
           if (type === 'coupon' && code) {
@@ -156,30 +202,40 @@ export async function POST(request) {
         }
       }
       
+      const assigned = await resolveAssignedCustomers(body);
+      if (assigned.error) {
+        return NextResponse.json({ error: assigned.error }, { status: 400 });
+      }
+
       const discount = await createDiscount({
         type,
         code: code ? code.toUpperCase() : null,
         name,
         valueType,
         valueAmount,
+        yearlyValueAmount: billingInterval ? null : yearlyAmount,
         durationType,
         durationMonths: durationType === 'repeating' ? durationMonths : null,
         maxRedemptions: maxRedemptions || null,
         applicablePlans: applicablePlans || null,
         billingInterval: billingInterval || null,
         expiryDate: expiryDate || null,
+        assignedUserIds: type === "coupon" ? assigned.ids : [],
         active: true,
       }, user.id);
       
       // Update with Stripe IDs if created
-      if (stripeCouponId) {
+      if (stripeCouponId || stripeCouponYearlyId) {
         const { query } = await import("@/lib/db");
         await query(`
           UPDATE discounts 
-          SET stripe_coupon_id = $1, stripe_promo_code_id = $2 
-          WHERE id = $3
-        `, [stripeCouponId, stripePromoCodeId, discount.id]);
+          SET stripe_coupon_id = COALESCE($1, stripe_coupon_id),
+              stripe_coupon_yearly_id = COALESCE($2, stripe_coupon_yearly_id),
+              stripe_promo_code_id = COALESCE($3, stripe_promo_code_id)
+          WHERE id = $4
+        `, [stripeCouponId, stripeCouponYearlyId, stripePromoCodeId, discount.id]);
         discount.stripe_coupon_id = stripeCouponId;
+        discount.stripe_coupon_yearly_id = stripeCouponYearlyId;
         discount.stripe_promo_code_id = stripePromoCodeId;
       }
       
@@ -195,6 +251,7 @@ export async function POST(request) {
         name,
         valueType,
         valueAmount,
+        yearlyValueAmount,
         durationType,
         durationMonths,
         maxRedemptions,
@@ -203,8 +260,18 @@ export async function POST(request) {
         expiryDate,
         active,
       } = body;
-      
-      const discount = await updateDiscount(discountId, {
+      if (
+        valueType === "percent"
+        && yearlyValueAmount != null
+        && yearlyValueAmount !== ""
+        && (Number(yearlyValueAmount) < 1 || Number(yearlyValueAmount) > 100)
+      ) {
+        return NextResponse.json(
+          { error: "Yearly percent discount must be between 1 and 100" },
+          { status: 400 }
+        );
+      }
+      const updates = {
         name,
         valueType,
         valueAmount,
@@ -215,9 +282,55 @@ export async function POST(request) {
         billingInterval,
         expiryDate,
         active,
-      });
+      };
+      if (Object.prototype.hasOwnProperty.call(body, "yearlyValueAmount")) {
+        updates.yearlyValueAmount = billingInterval || yearlyValueAmount == null || yearlyValueAmount === ""
+          ? null
+          : Number(yearlyValueAmount);
+      }
+      if (
+        Array.isArray(body.assignedCustomers)
+        || Array.isArray(body.assignedUserIds)
+        || Object.prototype.hasOwnProperty.call(body, "assignedUserId")
+      ) {
+        const assigned = await resolveAssignedCustomers(body);
+        if (assigned.error) {
+          return NextResponse.json({ error: assigned.error }, { status: 400 });
+        }
+        updates.assignedUserIds = body.type === "promotion" ? [] : assigned.ids;
+      }
+      
+      const discount = await updateDiscount(discountId, updates);
       
       return NextResponse.json({ discount, updated: true });
+    }
+
+    if (action === "delete") {
+      if (!discountId) {
+        return NextResponse.json({ error: "discountId required" }, { status: 400 });
+      }
+      const removed = await deleteDiscount(discountId);
+      if (!removed) {
+        return NextResponse.json({ error: "Discount not found" }, { status: 404 });
+      }
+      if (stripe) {
+        if (removed.stripe_promo_code_id) {
+          try {
+            await stripe.promotionCodes.update(removed.stripe_promo_code_id, { active: false });
+          } catch (stripeError) {
+            console.error("Stripe promotion code disable failed:", stripeError);
+          }
+        }
+        for (const couponId of [removed.stripe_coupon_id, removed.stripe_coupon_yearly_id]) {
+          if (!couponId) continue;
+          try {
+            await stripe.coupons.del(couponId);
+          } catch (stripeError) {
+            console.error("Stripe coupon delete failed:", stripeError);
+          }
+        }
+      }
+      return NextResponse.json({ deleted: true });
     }
     
     if (action === 'validate-code') {
