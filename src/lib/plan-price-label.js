@@ -118,22 +118,21 @@ export function withRegionPricing(plan, regionId, regionPrices, billingInterval 
   const yearlyNote = interval === "yearly" && Number(firstSite) > 0 ? "2 months free" : null;
   const additionalPriceLabel = formatRegionAmount(extraSite, currency, { per: period });
   const plainFirst = formatRegionAmount(firstSite, currency);
-  const plainExtra = formatRegionAmount(extraSite, currency);
   const highlights = Array.isArray(plan.highlights)
     ? plan.highlights.map((line) => {
         if (!String(line).includes("$") && !String(line).includes("Rs")) return line;
-        if (Number(firstSite) === 0) return `Add 2nd website · ${additionalPriceLabel}`;
-        return `${plainFirst} first site · ${plainExtra} each additional`;
+        if (Number(firstSite) === 0) return "Add more websites on any plan";
+        return `${plainFirst} per website`;
       })
     : plan.highlights;
 
   let description = plan.description;
   if (plan.id === "free") {
-    description = `1 website · all templates · switch anytime. Add a 2nd website for ${additionalPriceLabel}. Publish when you pick a paid plan.`;
+    description = "1 website · all templates · switch anytime. Add more websites on Free or on a paid plan.";
   } else if (plan.id === "custom") {
-    description = `Publish on a Technonaire address you choose. Additional websites ${additionalPriceLabel} each.`;
+    description = "Publish on a Technonaire address you choose. Each website is billed at this plan's price.";
   } else if (plan.id === "domain") {
-    description = `Live site + hosting on your own domain. Additional websites ${additionalPriceLabel} each.`;
+    description = "Live site + hosting on your own domain. Each website is billed at this plan's price.";
   }
 
   return {

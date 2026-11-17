@@ -18,7 +18,7 @@ export async function quotePlanCharge({
   const interval = billingInterval === "yearly" ? "yearly" : "monthly";
   const pricing = await getCachedPricing();
   const row = pricing?.[region]?.[planId] || null;
-  const kind = mode === "buy-slot" ? "extra" : "first";
+  const kind = "first";
   let original = catalogCents(row, kind, interval);
   if (original == null && fallbackCents != null) {
     original = interval === "yearly" ? Number(fallbackCents) * 10 : Number(fallbackCents);

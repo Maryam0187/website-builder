@@ -1153,7 +1153,7 @@ export async function setActiveSiteForOwner(ownerId, siteId) {
 }
 
 /**
- * Create an additional website for an existing owner (uses site_slots).
+ * Create another website for an existing owner (uses a purchased website slot).
  * Sets the new site as the active editor site.
  */
 export async function createOwnerSite(ownerId, { brandName, template, planId = "free" } = {}) {
@@ -1170,12 +1170,12 @@ export async function createOwnerSite(ownerId, { brandName, template, planId = "
   const used = await countSitesByOwner(oid);
   if (slots <= 1) {
     throw new Error(
-      "Add another website in Profile first. After payment you can create your additional site.",
+      "Choose a plan for this website on the Plan page first.",
     );
   }
   if (used >= slots) {
     throw new Error(
-      `Website limit reached (${used}/${slots}). Add another website in Profile to increase your limit.`,
+      `Website limit reached (${used}/${slots}). Choose a plan on the Plan page to add another website.`,
     );
   }
 
@@ -1192,7 +1192,15 @@ export async function createOwnerSite(ownerId, { brandName, template, planId = "
   }
 
   const resolvedTemplate = resolveTemplateId(template || "other");
-  const resolvedPlanId = String(planId || "free").toLowerCase().trim();
+  const resolvedPlanId = String(planId || "free").toLowerCase().trim() || "free";
+  if (resolvedPlanId === "free") {
+    const { ownerHasFreeWebsite } = await import("./billing");
+    if (await ownerHasFreeWebsite(oid)) {
+      throw new Error(
+        "You can only have one website on the Free plan. Choose Starter, Custom, or Domain for another website.",
+      );
+    }
+  }
   const content = normalizeSiteContent(
     createDefaultSiteContent({
       brandName: name,

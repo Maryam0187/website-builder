@@ -101,7 +101,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: mode === "buy-slot"
-        ? "Additional website slot added successfully"
+        ? "Website added. Name it to create it."
         : "Your subscription is now active",
       plan: {
         id: plan.id,

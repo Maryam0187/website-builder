@@ -43,7 +43,9 @@ export async function POST(request) {
 
     if (action === "buy-site-slot") {
       const slotPlanId = body.slotPlanId ? String(body.slotPlanId).trim() : null;
-      const result = await buyExtraSiteSlotOnSite(user.id, slotPlanId);
+      const result = await buyExtraSiteSlotOnSite(user.id, slotPlanId, {
+        billingInterval: body.billingInterval,
+      });
       
       const fresh = publicUser(await getUserById(user.id));
       const sitesUsed = await countSitesByOwner(user.id);

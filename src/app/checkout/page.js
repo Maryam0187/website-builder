@@ -358,17 +358,12 @@ function CheckoutContent() {
 
                 <div className="mt-4">
                   <p className="text-xs font-semibold tracking-[0.08em] text-blue-200/50 uppercase">
-                    {mode === "buy-slot" ? "Additional website" : "First website"}
+                    This website
                   </p>
                   {planDetails.compareAtLabel ? (
                     <p className="mt-1 text-sm text-blue-200/50 line-through">{planDetails.compareAtLabel}</p>
                   ) : null}
                   <p className="mt-1 text-3xl font-bold text-cyan-200">{planDetails.priceLabel}</p>
-                  {mode === "buy-slot" && planDetails.additionalPriceLabel && (
-                    <p className="mt-1 text-xs text-blue-200/60">
-                      Additional sites: {planDetails.additionalPriceLabel}
-                    </p>
-                  )}
                 </div>
 
                 <div className="mt-5 border-t border-white/10 pt-4">

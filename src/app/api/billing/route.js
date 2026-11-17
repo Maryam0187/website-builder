@@ -58,9 +58,11 @@ export async function POST(request) {
 
   // Block Pakistan from Stripe operations
   const stripeActions = ["subscribe", "checkout", "buy-site-slot", "buy-addon", "cancel-subscription", "downgrade"];
+  const buyingFreeWebsite =
+    action === "buy-site-slot" && String(body.slotPlanId || "").toLowerCase() === "free";
   const userRegion = user.region || "usa";
   const { regionAllowsStripe } = await import("@/lib/billing-regions");
-  if (stripeActions.includes(action) && !(await regionAllowsStripe(userRegion))) {
+  if (stripeActions.includes(action) && !buyingFreeWebsite && !(await regionAllowsStripe(userRegion))) {
     return NextResponse.json({
       error: "Stripe payments not available in your region. Please contact us for payment options.",
       region: userRegion,
@@ -126,17 +128,28 @@ export async function POST(request) {
 
     if (action === "buy-site-slot") {
       if (user.role !== "owner") {
-        return NextResponse.json({ error: "Only owners can buy extra slots" }, { status: 403 });
-      }
-      if (!isStripeConfigured()) {
-        return NextResponse.json({ error: "Stripe is not configured" }, { status: 400 });
+        return NextResponse.json({ error: "Only owners can add a website" }, { status: 403 });
       }
       const slotPlanId = body.slotPlanId ? String(body.slotPlanId).trim() : null;
-      const result = await buyExtraSiteSlot(user.id, slotPlanId, { returnTo: body.returnTo });
+      const result = await buyExtraSiteSlot(user.id, slotPlanId, {
+        returnTo: body.returnTo,
+        billingInterval: body.billingInterval,
+      });
+      if (result.granted) {
+        const enriched = await billingForUser(user);
+        return NextResponse.json({
+          promptCreateSite: true,
+          slotPlanId: result.slotPlanId,
+          user: enriched.user,
+          billing: enriched.billing,
+          message: result.message,
+        });
+      }
       return NextResponse.json({
         checkoutUrl: result.url,
         sessionId: result.sessionId,
-        message: "Redirecting to Stripe to add your second website…",
+        slotPlanId: result.slotPlanId,
+        message: "Redirecting to pay for this website…",
       });
     }
 

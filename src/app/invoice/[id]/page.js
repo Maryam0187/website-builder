@@ -433,7 +433,7 @@ export default function InvoicePage() {
                   <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-4 print:hidden">
                     <p className="font-semibold text-white">Next Step: Create Your Website</p>
                     <p className="mt-2 text-sm text-blue-100">
-                      You've paid for an additional website slot with the <strong>{slotPlan.name}</strong> plan.
+                      You've paid for a website on the <strong>{slotPlan.name}</strong> plan.
                       Click below to name and create your new website.
                     </p>
                     <a

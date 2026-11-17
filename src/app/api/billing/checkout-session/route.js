@@ -80,7 +80,7 @@ export async function POST(request) {
       mode,
       billingInterval,
       couponCode,
-      fallbackCents: mode === "buy-slot" ? plan.additionalPriceCents : plan.priceCents,
+      fallbackCents: plan.priceCents,
       userId: freshUser.id,
     });
     if (quoted.couponError) {
@@ -103,20 +103,16 @@ export async function POST(request) {
 
     // If no stored Price ID, create Product and Price on-demand
     if (!priceId) {
-      const productName = mode === "buy-slot"
-        ? `${plan.name} — Additional Website`
-        : `Easy Website — ${plan.name}`;
+      const productName = `Easy Website — ${plan.name}`;
       
       // Create Product first
       const product = await stripe.products.create({
         name: productName,
-        description: mode === "buy-slot"
-          ? `Additional website on your ${plan.name} plan.`
-          : plan.description,
+        description: plan.description,
         tax_code: "txcd_10103001",
         metadata: { 
           planId: plan.id,
-          mode: mode === "buy-slot" ? "extra" : "first"
+          mode: "first"
         },
       });
 
@@ -128,7 +124,7 @@ export async function POST(request) {
         product: product.id,
         metadata: {
           planId: plan.id,
-          mode: mode === "buy-slot" ? "extra" : "first",
+          mode: "first",
           billingInterval: quoted.interval,
         },
       });

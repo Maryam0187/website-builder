@@ -263,7 +263,7 @@ export default function ProfilePage() {
   async function deleteAdditionalSite(item) {
     const name = item.name || "this website";
     const ok = window.confirm(
-      `Delete “${name}”?\n\nThis additional website and its pages will be removed. Your first website stays.`,
+      `Delete “${name}”?\n\nThis website and its pages will be removed.`,
     );
     if (!ok) return;
     setSiteDeleteBusy(item.id);
@@ -636,7 +636,7 @@ export default function ProfilePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "create-site",
-            brandName: extra.brandName || "My additional website",
+            brandName: extra.brandName || "My website",
             planId: newSitePlanId || extra.planId || "free",
           }),
         });
@@ -705,29 +705,33 @@ export default function ProfilePage() {
         const res = await fetch("/api/billing/charge-on-site", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "buy-site-slot", slotPlanId: id }),
+          body: JSON.stringify({
+            action: "buy-site-slot",
+            slotPlanId: id,
+            billingInterval: extra.billingInterval,
+          }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to add website slot");
+        if (!res.ok) throw new Error(data.error || "Could not add website");
         if (data.user) setUser(data.user);
         if (data.billing) setBilling(data.billing);
         if (data.invoices) setInvoices(data.invoices);
         if (data.slotPlanId) setNewSitePlanId(data.slotPlanId);
-        setBillingMsg(data.message || "Website slot added!");
+        setBillingMsg(data.message || "Website added");
         const invoiceUrlWithPlan = data.slotPlanId && data.invoiceUrl
           ? `${data.invoiceUrl}?ref=profile`
           : data.invoiceUrl;
         if (data.promptCreateSite) {
           setCreateSitePrompt(true);
           setPaymentSuccess({
-            message: data.message || "Website slot added! Create your new site now.",
+            message: data.message || "Website added. Name it to create it.",
             nextHash: "#plan",
             continueLabel: "Continue",
             invoiceUrl: invoiceUrlWithPlan,
           });
         } else {
           setPaymentSuccess({
-            message: data.message || "Website slot added!",
+            message: data.message || "Website added",
             nextHash: "#billing",
             continueLabel: "Continue to Billing",
             invoiceUrl: invoiceUrlWithPlan,
@@ -750,12 +754,28 @@ export default function ProfilePage() {
       }
 
       if (action === "buy-site-slot") {
-        const params = new URLSearchParams({
-          planId: id,
-          slotPlanId: id,
-          mode: "buy-slot",
+        const res = await fetch("/api/billing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "buy-site-slot",
+            slotPlanId: id,
+            billingInterval: extra.billingInterval,
+            returnTo: "plan",
+          }),
         });
-        window.location.href = `/checkout?${params.toString()}`;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not add website");
+        if (data.checkoutUrl) {
+          window.location.href = data.checkoutUrl;
+          return;
+        }
+        if (data.user) setUser(data.user);
+        if (data.billing) setBilling(data.billing);
+        if (data.slotPlanId) setNewSitePlanId(data.slotPlanId);
+        setBillingMsg(data.message || "Website added");
+        if (data.promptCreateSite) setCreateSitePrompt(true);
+        setBillingBusy(false);
         return;
       }
 
@@ -850,12 +870,26 @@ export default function ProfilePage() {
         : "Draft";
   const canGoLive = Boolean(billing?.canGoLive);
   function websitePlanName(item) {
-    if (!billing?.subscriptionActive) return "Free";
-    const catalog = billing.plans || [];
+    const catalog = billing?.plans || [];
     const raw = String(item.planId || "free").toLowerCase();
-    const siteId = raw === "live" ? "custom" : raw;
-    const id = !siteId || siteId === "free" ? billing.planId || "free" : siteId;
-    return catalog.find((plan) => plan.id === id)?.name || billing.planName || "Free";
+    const sitePlanId = raw === "live" ? "custom" : raw;
+    const oldest = sites.reduce((current, candidate) => {
+      if (!current) return candidate;
+      const currentTime = new Date(current.createdAt || 0).getTime();
+      const candidateTime = new Date(candidate.createdAt || 0).getTime();
+      if (candidateTime < currentTime) return candidate;
+      if (candidateTime === currentTime && candidate.id < current.id) return candidate;
+      return current;
+    }, null);
+    const inheritsAccount = (!sitePlanId || sitePlanId === "free") && oldest?.id === item.id;
+    const id = inheritsAccount
+      ? (billing?.subscriptionActive ? billing.planId || "free" : "free")
+      : sitePlanId || "free";
+    const plan = catalog.find((entry) => entry.id === id);
+    const name = plan?.name || (inheritsAccount ? billing?.planName : "") || "Free";
+    const price = inheritsAccount ? billing?.priceLabel : plan?.priceLabel;
+    if (!price || id === "free") return name;
+    return `${name} · ${price}`;
   }
 
   const navItems = [
@@ -1010,7 +1044,7 @@ export default function ProfilePage() {
                     Websites
                   </h1>
                   <p className="mt-1 text-sm text-blue-100/80">
-                    Manage your websites, names, publishing, live address, and version history.
+                    Each website has its own plan. Add another on the same plan or a different one from Plan.
                   </p>
                 </div>
                 <div className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-blue-100">
@@ -1109,7 +1143,6 @@ export default function ProfilePage() {
                           >
                             {nameBusy ? "Saving…" : "Save name"}
                           </button>
-                          {nameStatus ? (
                           {canDeleteSite ? (
                             <button
                               type="button"
@@ -1120,6 +1153,7 @@ export default function ProfilePage() {
                               {siteDeleteBusy === item.id ? "Deleting…" : "Delete website"}
                             </button>
                           ) : null}
+                          {nameStatus ? (
                             <p
                               className={`text-xs ${
                                 nameStatus === "Saved" ? "text-emerald-300" : "text-cyan-200"
@@ -1577,6 +1611,7 @@ export default function ProfilePage() {
                     onAction={(action, id, extra = {}) =>
                       billingAction(action, id, { ...extra, returnTo: "plan" })
                     }
+                    sites={sites}
                     onCreateSiteRequest={() => setCreateSitePrompt(true)}
                     onContactUs={() => setShowChat(true)}
                   />
