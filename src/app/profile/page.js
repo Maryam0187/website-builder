@@ -814,6 +814,14 @@ export default function ProfilePage() {
         ? String(value).charAt(0).toUpperCase() + String(value).slice(1)
         : "Draft";
   const canGoLive = Boolean(billing?.canGoLive);
+  function websitePlanName(item) {
+    if (!billing?.subscriptionActive) return "Free";
+    const catalog = billing.plans || [];
+    const raw = String(item.planId || "free").toLowerCase();
+    const siteId = raw === "live" ? "custom" : raw;
+    const id = !siteId || siteId === "free" ? billing.planId || "free" : siteId;
+    return catalog.find((plan) => plan.id === id)?.name || billing.planName || "Free";
+  }
 
   const navItems = [
     { href: "#account", label: "Account" },
@@ -1040,10 +1048,10 @@ export default function ProfilePage() {
                               {status}
                             </span>
                             <span
-                              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-200 capitalize"
-                              title={`Plan: ${item.planId || "free"}`}
+                              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-200"
+                              title={`Plan: ${websitePlanName(item)}`}
                             >
-                              {item.planId === "free" ? "Free" : item.planId}
+                              {websitePlanName(item)}
                             </span>
                           </div>
                         </div>
