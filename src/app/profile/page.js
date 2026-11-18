@@ -1603,10 +1603,15 @@ export default function ProfilePage() {
                     message={billingMsg}
                     region={user.region || "usa"}
                     regionLocked={Boolean(user.regionLocked)}
+                    regionSaved={Boolean(user.regionConfirmed)}
                     regionPrices={regionPrices}
                     regions={regions}
                     onRegionConfirmed={(nextRegion) =>
-                      setUser((current) => (current ? { ...current, region: nextRegion } : current))
+                      setUser((current) =>
+                        current
+                          ? { ...current, region: nextRegion, regionConfirmed: true }
+                          : current
+                      )
                     }
                     onAction={(action, id, extra = {}) =>
                       billingAction(action, id, { ...extra, returnTo: "plan" })

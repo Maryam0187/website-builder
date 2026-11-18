@@ -31,7 +31,7 @@ export async function POST(request) {
         );
       }
       await query(
-        `UPDATE users SET region = $1 WHERE id = $2`,
+        `UPDATE users SET region = $1, region_confirmed = true WHERE id = $2`,
         [region, user.id]
       );
     }

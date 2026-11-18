@@ -73,6 +73,7 @@ async function ensureBillingColumns() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT NULL;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_pending_secret TEXT NULL;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_ask_life TEXT NOT NULL DEFAULT 'every';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS region_confirmed BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'domain';
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS stripe_session_id TEXT NULL;
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS addon_id TEXT NULL;

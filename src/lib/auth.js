@@ -77,6 +77,7 @@ function mapUser(row) {
     siteSlots: Math.max(1, Number(row.site_slots) || 1),
     region: row.region || "usa",
     regionLocked: Boolean(row.region_locked),
+    regionConfirmed: Boolean(row.region_confirmed),
     totpEnabled: Boolean(row.totp_enabled),
     totpSecret: row.totp_secret || null,
     totpPendingSecret: row.totp_pending_secret || null,
@@ -109,6 +110,7 @@ export function publicUser(user) {
     siteSlots: Math.max(1, Number(user.siteSlots) || 1),
     region: user.region || "usa",
     regionLocked: Boolean(user.regionLocked),
+    regionConfirmed: Boolean(user.regionConfirmed),
     totpEnabled: Boolean(user.totpEnabled),
     totpAskLife: normalizeTotpAskLife(user.totpAskLife),
   };

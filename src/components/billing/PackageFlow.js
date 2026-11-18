@@ -166,12 +166,15 @@ export default function PackageFlow({
   onRegionConfirmed,
   region = "usa",
   regionLocked = false,
+  regionSaved = false,
   regionPrices = null,
   regions = null,
   view = "all",
 }) {
   const [draftRegion, setDraftRegion] = useState(region || "usa");
-  const [regionConfirmed, setRegionConfirmed] = useState(Boolean(regionLocked));
+  const [confirmedRegion, setConfirmedRegion] = useState(
+    regionLocked || regionSaved ? region || "usa" : "",
+  );
   const [regionBusy, setRegionBusy] = useState(false);
   const [regionNotice, setRegionNotice] = useState("");
   const [showSlotPicker, setShowSlotPicker] = useState(false);
@@ -200,8 +203,10 @@ export default function PackageFlow({
   }, [region]);
 
   useEffect(() => {
-    if (regionLocked) setRegionConfirmed(true);
-  }, [regionLocked]);
+    if (regionLocked || regionSaved) setConfirmedRegion(region || "usa");
+  }, [region, regionLocked, regionSaved]);
+
+  const regionConfirmed = regionLocked || (confirmedRegion !== "" && confirmedRegion === draftRegion);
 
   function requireConfirmedRegion() {
     if (regionLocked || regionConfirmed) return true;
@@ -221,7 +226,7 @@ export default function PackageFlow({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not save region");
-      setRegionConfirmed(true);
+      setConfirmedRegion(draftRegion);
       onRegionConfirmed?.(draftRegion);
       setRegionNotice(
         draftRegion === "pakistan"
@@ -229,7 +234,6 @@ export default function PackageFlow({
           : "Region confirmed. Choose a plan below."
       );
     } catch (err) {
-      setRegionConfirmed(false);
       setRegionNotice(err.message || "Could not save region");
     } finally {
       setRegionBusy(false);
@@ -319,9 +323,15 @@ export default function PackageFlow({
           <div className="grid gap-4 lg:grid-cols-2">
           <div id="plan-region" className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-5">
             <p className="text-xs uppercase tracking-wide text-blue-200/70">Step 1</p>
-            <h3 className="mt-1 text-lg font-semibold text-white">Confirm your region</h3>
+            <h3 className="mt-1 text-lg font-semibold text-white">
+              {regionConfirmed ? "Your region" : "Confirm your region"}
+            </h3>
             <p className="mt-1 text-sm text-blue-100">
-              Payment and pricing use this region. Confirm it, then choose a package.
+              {regionLocked
+                ? "Pricing stays on this region."
+                : regionConfirmed
+                  ? "Saved. Pricing uses this region until you change it."
+                  : "Payment and pricing use this region. Confirm it once, then choose a package."}
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {regionLocked ? (
@@ -334,7 +344,6 @@ export default function PackageFlow({
                   regions={regions}
                   onRegionChange={(nextRegion) => {
                     setDraftRegion(nextRegion);
-                    setRegionConfirmed(false);
                     setRegionNotice("");
                   }}
                 />

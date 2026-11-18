@@ -127,7 +127,7 @@ export async function PATCH(request) {
       
       const { query } = await import("@/lib/db");
       await query(
-        `UPDATE users SET region = $1 WHERE id = $2`,
+        `UPDATE users SET region = $1, region_confirmed = true WHERE id = $2`,
         [newRegion, user.id]
       );
       
