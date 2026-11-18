@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import MessageThread from "@/components/messaging/MessageThread";
@@ -9,6 +9,7 @@ import BrandLogo from "@/components/BrandLogo";
 
 export default function AdminInboxPage() {
   const router = useRouter();
+  const openedFromQuery = useRef(false);
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [thread, setThread] = useState(null);
@@ -43,6 +44,7 @@ export default function AdminInboxPage() {
         ...prev,
         brandName: prev.brandName || data.conversation.websiteName || data.conversation.name || "",
         phone: prev.phone || data.conversation.phone || "",
+        ownerEmail: prev.ownerEmail || data.conversation.email || "",
       }));
     }
   }, []);
@@ -50,6 +52,14 @@ export default function AdminInboxPage() {
   useEffect(() => {
     loadList();
   }, [loadList]);
+
+  useEffect(() => {
+    if (openedFromQuery.current) return;
+    const requested = Number(new URLSearchParams(window.location.search).get("c"));
+    if (!Number.isFinite(requested) || requested <= 0) return;
+    openedFromQuery.current = true;
+    setActiveId(requested);
+  }, []);
 
   useEffect(() => {
     if (activeId) loadThread(activeId);
@@ -94,9 +104,6 @@ export default function AdminInboxPage() {
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Link href="/admin" className="text-xs font-medium text-cyan-200 hover:underline">
               ← Dashboard
-            </Link>
-            <Link href="/profile" className="text-xs font-medium text-cyan-200 hover:underline">
-              Profile
             </Link>
             <Link href="/admin/settings" className="text-xs font-medium text-cyan-200 hover:underline">
               Settings

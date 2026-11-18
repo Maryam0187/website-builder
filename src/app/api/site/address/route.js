@@ -3,7 +3,6 @@ import { requireUser, denyIfMustChangePassword, getUserById } from "@/lib/auth";
 import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 import {
   checkSubdomainAvailability,
-  claimSubdomainForSite,
   updateSubdomainForSite,
   setCustomDomainForSite,
   verifyDnsForDomain,
@@ -158,9 +157,8 @@ export async function POST(request) {
         return NextResponse.json({ error: "subdomain required" }, { status: 400 });
       }
 
-      const result = action === "update-subdomain"
-        ? await updateSubdomainForSite(siteId, subdomain, user.id)
-        : await claimSubdomainForSite(siteId, subdomain, user.id);
+      const hadSubdomain = Boolean(site.subdomain);
+      const result = await updateSubdomainForSite(siteId, subdomain, user.id);
 
       const updated = await getSiteById(siteId);
       return NextResponse.json({
@@ -172,7 +170,7 @@ export async function POST(request) {
           cfValidationRecords: updated.cfValidationRecords,
           cfSslStatus: updated.cfSslStatus
         },
-        message: action === "update-subdomain"
+        message: hadSubdomain
           ? `Address updated to ${result.subdomain}.${process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com"}`
           : `Claimed ${result.subdomain}.${process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com"} for your website`,
       });

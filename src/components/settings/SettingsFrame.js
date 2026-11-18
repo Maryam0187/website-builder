@@ -11,14 +11,22 @@ export default function SettingsFrame({ user, activeHref = "#templates", childre
   const [showChat, setShowChat] = useState(false);
   const role = user?.role === "admin" ? "admin" : "owner";
   const homeHref = role === "admin" ? "/admin" : "/edit";
-  const navItems = [
-    { href: "/profile#account", hash: "#account", label: "Account" },
-    ...(role === "owner" ? [{ href: "/profile#websites", hash: "#websites", label: "Websites" }] : []),
-    { href: "/profile#templates", hash: "#templates", label: "Templates" },
-    { href: "/profile#security", hash: "#security", label: "Security" },
-    { href: "/profile#plan", hash: "#plan", label: "Plan" },
-    ...(role === "owner" ? [{ href: "/profile#billing", hash: "#billing", label: "Billing" }] : []),
-  ];
+  const navItems =
+    role === "admin"
+      ? [
+          { href: "/admin/settings#pricing", hash: "#pricing", label: "Region pricing" },
+          { href: "/admin/settings#2fa", hash: "#2fa", label: "2FA" },
+          { href: "/admin/settings#discounts", hash: "#discounts", label: "Discounts" },
+          { href: "/admin/settings#templates", hash: "#templates", label: "Templates" },
+        ]
+      : [
+          { href: "/profile#account", hash: "#account", label: "Account" },
+          { href: "/profile#websites", hash: "#websites", label: "Websites" },
+          { href: "/profile#templates", hash: "#templates", label: "Templates" },
+          { href: "/profile#security", hash: "#security", label: "Security" },
+          { href: "/profile#plan", hash: "#plan", label: "Plan" },
+          { href: "/profile#billing", hash: "#billing", label: "Billing" },
+        ];
 
   async function logout() {
     await fetch("/api/auth", { method: "DELETE" });

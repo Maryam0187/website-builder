@@ -28,6 +28,7 @@ export default async function AdminTemplatePreview({
   pageParam = "home",
   roles = ["admin"],
   pathPrefix = "/admin/templates",
+  backHref,
 }) {
   const user = await requireUser(roles);
   const previewPath =
@@ -51,6 +52,8 @@ export default async function AdminTemplatePreview({
   if (pageParam && pageParam !== "home" && pageId !== pageParam) notFound();
 
   const basePath = `${pathPrefix}/${id}`;
+  const templatesHref =
+    backHref || (pathPrefix.startsWith("/admin") ? "/admin/settings#templates" : "/profile#templates");
   const showApply = user.role === "owner";
   const index = TEMPLATE_IDS.indexOf(id);
   const previousId = index > 0 ? TEMPLATE_IDS[index - 1] : null;
@@ -62,7 +65,7 @@ export default async function AdminTemplatePreview({
     <SettingsFrame user={{ email: user.email, role: user.role }} activeHref="#templates">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#040b1a] px-4 py-3 sm:px-6">
         <Link
-          href="/profile#templates"
+          href={templatesHref}
           className="inline-flex min-w-0 items-center gap-2 rounded-full px-1 py-1 text-white hover:text-cyan-100"
         >
           <span aria-hidden="true" className="text-lg leading-none">←</span>

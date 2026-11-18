@@ -89,7 +89,7 @@ export default function SubdomainPicker({
     setSuccess("");
 
     try {
-      const action = currentSubdomain ? "update-subdomain" : "claim-subdomain";
+      const action = "update-subdomain";
       const res = await fetch("/api/site/address", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

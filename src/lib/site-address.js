@@ -60,46 +60,11 @@ export async function checkSubdomainAvailability(desiredSubdomain) {
 }
 
 /**
- * Reserve/claim a chosen subdomain for a Custom plan site.
- * Requires the site owner to have an active Custom+ plan.
+ * Reserve or replace the Technonaire address for a Custom plan site.
+ * Starter sites already have a random address; choosing one must replace it.
  */
 export async function claimSubdomainForSite(siteId, desiredSubdomain, userId) {
-  const availability = await checkSubdomainAvailability(desiredSubdomain);
-  
-  if (!availability.available) {
-    throw new Error(availability.reason || "Subdomain not available");
-  }
-
-  const normalized = availability.normalized;
-
-  // Double-check with a race-safe update
-  const { rows, rowCount } = await query(
-    `UPDATE sites
-     SET subdomain = $2, updated_at = now()
-     WHERE id = $1 
-       AND owner_id = $3
-       AND (subdomain IS NULL OR subdomain = $2)
-     RETURNING *`,
-    [siteId, normalized, userId]
-  );
-
-  if (rowCount === 0) {
-    // Either site not found, wrong owner, or subdomain already set to something else
-    const { rows: checkRows } = await query(
-      `SELECT id, subdomain FROM sites WHERE lower(subdomain) = lower($1) AND id <> $2 LIMIT 1`,
-      [normalized, siteId]
-    );
-    
-    if (checkRows.length > 0) {
-      throw new Error("This subdomain was just taken by another site");
-    }
-    throw new Error("Could not claim subdomain - site not found or already has a different address");
-  }
-
-  return { 
-    subdomain: normalized,
-    site: rows[0]
-  };
+  return updateSubdomainForSite(siteId, desiredSubdomain, userId);
 }
 
 /**

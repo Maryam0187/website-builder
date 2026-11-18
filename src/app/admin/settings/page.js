@@ -7,6 +7,7 @@ import BrandLogo from "@/components/BrandLogo";
 import RegionPricingPanel from "@/components/admin/RegionPricingPanel";
 import DiscountsPanel from "@/components/admin/DiscountsPanel";
 import AdminTwoFactor from "@/components/admin/AdminTwoFactor";
+import AdminTemplatesGallery from "@/components/admin/AdminTemplatesGallery";
 
 const panelClass = "rounded-2xl border border-white/10 bg-[#07122a]/70 p-6 md:p-8";
 
@@ -14,6 +15,7 @@ const NAV = [
   { href: "#pricing", label: "Region pricing" },
   { href: "#2fa", label: "2FA" },
   { href: "#discounts", label: "Discounts" },
+  { href: "#templates", label: "Templates" },
 ];
 
 function normalizeAdminHash(hash) {
@@ -26,6 +28,7 @@ function normalizeAdminHash(hash) {
   if (next === "#region" || next === "#regions" || next === "#region-pricing") return "#pricing";
   if (next === "#authenticator" || next === "#security" || next === "#totp") return "#2fa";
   if (next === "#coupons" || next === "#coupon") return "#discounts";
+  if (next === "#template") return "#templates";
   if (NAV.some((item) => item.href === next)) return next;
   return "#pricing";
 }
@@ -179,6 +182,11 @@ export default function AdminSettingsPage() {
           {activeHash === "#discounts" ? (
             <section id="discounts" className={panelClass}>
               <DiscountsPanel />
+            </section>
+          ) : null}
+          {activeHash === "#templates" ? (
+            <section id="templates" className={panelClass}>
+              <AdminTemplatesGallery framed={false} />
             </section>
           ) : null}
         </main>

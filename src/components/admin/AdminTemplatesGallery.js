@@ -6,12 +6,16 @@ import { listTemplates } from "@/lib/templates";
 export default function AdminTemplatesGallery({
   openBase = "/admin/templates",
   actionLabel = "Open template",
-  description = "One-page previews by default. Assigned from business type at draft creation; clients can switch templates in the editor. Extra sections are added from the sites list (navbar).",
+  description = "One-page previews by default. Assigned from business type at draft creation; clients can switch templates in the editor. Extra sections are added from a user’s websites.",
+  framed = true,
 }) {
   const templates = listTemplates();
+  const shell = framed
+    ? "overflow-hidden rounded-3xl border border-white/10 bg-white/5"
+    : "";
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+    <div className={shell}>
       <div className="border-b border-white/10 px-6 py-4">
         <h2 className="font-semibold">All templates</h2>
         <p className="mt-1 text-xs text-blue-200/80">{description}</p>
