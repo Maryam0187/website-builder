@@ -56,7 +56,7 @@ function PaymentElementForm({ onSuccess, onCancel, onError, busy: externalBusy }
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="rounded-lg border border-white/15 bg-[#040b1a] p-4">
-        <PaymentElement />
+        <PaymentElement options={{ wallets: { link: "never" } }} />
       </div>
 
       {error ? (

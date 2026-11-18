@@ -2,7 +2,13 @@ import { nanoid } from "nanoid";
 import { query } from "./db";
 import { getUserById, publicUser } from "./auth";
 import { getTemplate, resolveTemplateId } from "./templates";
-import { appBaseUrl, getStripe, isStripeConfigured } from "./stripe";
+import {
+  appBaseUrl,
+  cardOnlyCheckoutParams,
+  cardOnlyCheckoutRequestOptions,
+  getStripe,
+  isStripeConfigured,
+} from "./stripe";
 import {
   countLiveSitesByOwner,
   countSitesByOwner,
@@ -1664,6 +1670,7 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
     cancel_url: urls.cancel_url,
     // Sandbox / standard Checkout — Managed Payments requires extra tax setup
     managed_payments: { enabled: false },
+    ...cardOnlyCheckoutParams(),
     discounts: quoted.stripeCouponId ? [{ coupon: quoted.stripeCouponId }] : undefined,
     line_items: [
       {
@@ -1700,7 +1707,7 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
         discountId: quoted.discount?.id ? String(quoted.discount.id) : "",
       },
     },
-  });
+  }, cardOnlyCheckoutRequestOptions());
 
   return {
     url: session.url,
@@ -1799,6 +1806,7 @@ export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo, billingIn
     success_url: urls.success_url,
     cancel_url: urls.cancel_url,
     managed_payments: { enabled: false },
+    ...cardOnlyCheckoutParams(),
     line_items: [
       {
         quantity: 1,
@@ -1822,7 +1830,7 @@ export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo, billingIn
       note: slotLabel,
       returnTo: urls.returnTo,
     },
-  });
+  }, cardOnlyCheckoutRequestOptions());
 
   return { url: session.url, sessionId: session.id, granted: false, slotPlanId: plan.id };
 }
@@ -1873,6 +1881,7 @@ export async function createStripeAddonCheckout(userId, addonId, { returnTo } = 
     success_url: urls.success_url,
     cancel_url: urls.cancel_url,
     managed_payments: { enabled: false },
+    ...cardOnlyCheckoutParams(),
     line_items: [
       {
         quantity: 1,
@@ -1893,7 +1902,7 @@ export async function createStripeAddonCheckout(userId, addonId, { returnTo } = 
       kind: "addon",
       returnTo: urls.returnTo,
     },
-  });
+  }, cardOnlyCheckoutRequestOptions());
 
   return {
     url: session.url,

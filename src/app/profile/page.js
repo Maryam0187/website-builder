@@ -1716,6 +1716,14 @@ export default function ProfilePage() {
         message={paymentSuccess?.message || "Payment successful"}
         continueLabel={paymentSuccess?.continueLabel || "Continue to Billing"}
         invoiceUrl={paymentSuccess?.invoiceUrl || null}
+        onStayOnPlans={
+          paymentSuccess?.nextHash === "#plan"
+            ? undefined
+            : () => {
+                setPaymentSuccess(null);
+                setActiveHash(replaceProfileLocation("#plan"));
+              }
+        }
         onViewInvoice={(url) => {
           setPaymentSuccess(null);
           window.location.assign(url);

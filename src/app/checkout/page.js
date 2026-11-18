@@ -61,7 +61,7 @@ function CheckoutForm({ planId, slotPlanId, mode, onSuccess, onError }) {
 
   return (
     <form onSubmit={handleSubmit} className="flex h-full flex-1 flex-col">
-      <PaymentElement />
+      <PaymentElement options={{ wallets: { link: "never" } }} />
 
       {error && (
         <div className="mt-4 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3">

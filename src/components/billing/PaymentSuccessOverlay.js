@@ -2,15 +2,17 @@
 
 /**
  * Full-screen payment success with green tick.
- * Stays open until the user chooses View invoice or Continue to Billing.
+ * Stays open until the user chooses View invoice, Continue to Billing, or Stay on Plans.
  */
 export default function PaymentSuccessOverlay({
   open,
   message = "Payment successful",
   continueLabel = "Continue to Billing",
+  stayLabel = "Stay on Plans",
   invoiceUrl = null,
   onContinue,
   onViewInvoice,
+  onStayOnPlans,
 }) {
   if (!open) return null;
 
@@ -81,6 +83,15 @@ export default function PaymentSuccessOverlay({
           >
             {continueLabel}
           </button>
+          {onStayOnPlans ? (
+            <button
+              type="button"
+              onClick={() => onStayOnPlans()}
+              className="w-full rounded-full border border-white/15 px-5 py-2.5 text-sm font-semibold text-blue-100 hover:bg-white/5"
+            >
+              {stayLabel}
+            </button>
+          ) : null}
         </div>
       </div>
 
