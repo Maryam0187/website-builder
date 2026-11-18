@@ -2,7 +2,13 @@ import { nanoid } from "nanoid";
 import { query } from "./db";
 import { getUserById, publicUser } from "./auth";
 import { getTemplate, resolveTemplateId } from "./templates";
-import { appBaseUrl, getStripe, isStripeConfigured } from "./stripe";
+import {
+  appBaseUrl,
+  cardOnlyCheckoutParams,
+  cardOnlyCheckoutRequestOptions,
+  getStripe,
+  isStripeConfigured,
+} from "./stripe";
 import {
   countLiveSitesByOwner,
   countSitesByOwner,
@@ -10,14 +16,22 @@ import {
   ensureSiteSubdomain,
   getSiteById,
   isSiteLive,
+  listSitesByOwner,
   ownerOwnsSite,
   setSiteLiveStatus,
   sitePublicUrl,
 } from "./store-actions";
 
+const SITE_HOST_ROOT = process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com";
+
 export const TRIAL_DAYS = 14;
 export const BILLING_PERIOD_DAYS = 30;
 export const BILLING_CURRENCY = "usd";
+export const GRACE_PERIOD_DAYS = 7;
+export const DOMAIN_RELEASE_DAYS = 30;
+
+/** Maximum total websites per account (1 first + up to 9 additional by default). */
+export const MAX_WEBSITE_SLOTS = Number(process.env.MAX_WEBSITE_SLOTS) || 10;
 
 /** Allowed profile sections to return to after Stripe Checkout. */
 export function normalizeBillingReturnTo(value, fallback = "plan") {
@@ -60,10 +74,10 @@ export const FREE_TEMPLATE_IDS = new Set([
 /**
  * USD packages. Paid via Stripe Checkout when configured.
  * Free is the default plan — 1 website, all templates, switch anytime.
- * Extra website: one-time +1 slot after successful payment (max 2 sites).
+ * Each website is its own plan at the full plan price. Another website can use the same plan or a different one.
  */
-/** 1 included + 1 extra after a paid add-on. */
-export const MAX_SITE_SLOTS = 2;
+/** @deprecated Use MAX_WEBSITE_SLOTS instead */
+export const MAX_SITE_SLOTS = MAX_WEBSITE_SLOTS;
 
 export const PLANS = {
   free: {
@@ -74,7 +88,7 @@ export const PLANS = {
     additionalPriceCents: 500,
     additionalPriceLabel: "$5/month",
     description:
-      "1 website · all templates · switch anytime. Add a 2nd website for $5/month. Publish when you pick a paid plan.",
+      "1 website · all templates · switch anytime. Add more websites on Free or on a paid plan.",
     features: {
       live: false,
       hosting: false,
@@ -87,7 +101,7 @@ export const PLANS = {
     highlights: [
       "1 website included",
       "All templates · switch anytime",
-      "Add 2nd website · $5/month",
+      "Add more websites on any plan",
       "Draft only · no card needed",
     ],
   },
@@ -99,7 +113,7 @@ export const PLANS = {
     additionalPriceCents: 700,
     additionalPriceLabel: "$7/month",
     description:
-      "Publish on a random Technonaire address (*.technonaire.site). Hosting, SSL, templates, editor, publishing, and version history.",
+      `Publish on a random Technonaire address (*.${SITE_HOST_ROOT}). Hosting, SSL, templates, editor, publishing, and version history.`,
     features: {
       live: true,
       hosting: true,
@@ -111,11 +125,11 @@ export const PLANS = {
       versionHistory: true,
     },
     highlights: [
-      "random.technonaire.site",
+      `random.${SITE_HOST_ROOT}`,
       "Hosting + SSL",
       "Templates, editor, publishing",
       "Version history (5)",
-      "$9 first site · $7 each additional",
+      "$9 per website",
     ],
   },
   custom: {
@@ -126,7 +140,7 @@ export const PLANS = {
     additionalPriceCents: 1500,
     additionalPriceLabel: "$15/month",
     description:
-      "Publish on a Technonaire address you choose. Additional websites $15/month each.",
+      "Publish on a Technonaire address you choose. Each website is billed at this plan's price.",
     features: {
       live: true,
       hosting: true,
@@ -140,7 +154,7 @@ export const PLANS = {
     highlights: [
       "Everything in Starter",
       "Customer-selected Technonaire address",
-      "$19 first site · $15 each additional",
+      "$19 per website",
       "Switch templates anytime",
     ],
   },
@@ -152,7 +166,7 @@ export const PLANS = {
     additionalPriceCents: 2400,
     additionalPriceLabel: "$24/month",
     description:
-      "Live site + hosting on your own domain. Additional websites $24/month each.",
+      "Live site + hosting on your own domain. Each website is billed at this plan's price.",
     features: {
       live: true,
       hosting: true,
@@ -166,19 +180,19 @@ export const PLANS = {
     highlights: [
       "Everything in Custom",
       "Your own domain",
-      "$29 first site · $24 each additional",
+      "$29 per website",
       "Self-serve DNS guide",
     ],
   },
   pro: {
     id: "pro",
     name: "Pro + PWA",
-    priceCents: 3900,
-    priceLabel: "$39/month",
-    additionalPriceCents: 3400,
-    additionalPriceLabel: "$34/month",
+    priceCents: null, // Not sold via Stripe - contact only
+    priceLabel: "Contact us",
+    additionalPriceCents: null,
+    additionalPriceLabel: "Contact us",
     description:
-      "Custom domain plus installable PWA. Additional websites $34/month each.",
+      "Custom domain plus installable PWA. Contact us to discuss your needs.",
     features: {
       live: true,
       hosting: true,
@@ -192,9 +206,10 @@ export const PLANS = {
     highlights: [
       "Everything in Domain",
       "Installable PWA",
-      "$39 first site · $34 each additional",
       "Priority support",
+      "Contact us for pricing",
     ],
+    contactOnly: true, // Flag to indicate this plan requires contact
   },
 };
 
@@ -217,6 +232,15 @@ export function normalizePlanId(planId) {
   const id = String(planId || "").toLowerCase().trim();
   if (id === "live") return "custom";
   return id;
+}
+
+/** Check if a plan can be purchased via Stripe */
+export function isPlanPurchasable(planId) {
+  const id = normalizePlanId(planId);
+  const plan = PLANS[id];
+  if (!plan) return false;
+  if (plan.contactOnly) return false;
+  return plan.priceCents != null;
 }
 
 export function planRank(planId) {
@@ -247,18 +271,17 @@ export function getPlan(planId) {
 export const ADDONS = {
   site_plus_1: {
     id: "site_plus_1",
-    name: "Additional website",
+    name: "Website",
     priceCents: 700,
-    priceLabel: "from $7/month",
+    priceLabel: "Plan price",
     billingType: "monthly",
     category: "slot",
     siteSlots: 1,
-    description:
-      "Additional websites are billed monthly as part of your plan. Starter +$7/mo · Custom +$15/mo · Domain +$24/mo · Pro +$34/mo.",
+    description: "Another website on the plan you choose, billed at that plan's full price.",
     highlights: [
-      "Priced by your plan",
-      "Starter +$7 · Custom +$15 · Domain +$24 · Pro +$34",
-      "Managed through your subscription",
+      "Same plan or a different plan",
+      "Billed at the full plan price",
+      "Name the website after payment",
     ],
   },
   // Kept for old invoices; not offered for new purchases.
@@ -482,6 +505,84 @@ export function planFeatures(user) {
   };
 }
 
+function oldestSiteId(sites) {
+  return [...(sites || [])].sort((a, b) => {
+    const diff = new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+    if (diff) return diff;
+    return Number(a.id) - Number(b.id);
+  })[0]?.id;
+}
+
+/** The plan a website is actually on. The oldest site with no plan of its own follows the account plan. */
+export function siteUsesFreePlan(site, user, sites) {
+  const raw = String(site?.planId || "free").toLowerCase();
+  const sitePlanId = raw === "live" ? "custom" : raw;
+  const oldestId = oldestSiteId(sites);
+  const inheritsAccount =
+    (!sitePlanId || sitePlanId === "free") && oldestId != null && Number(oldestId) === Number(site?.id);
+  if (inheritsAccount) {
+    if (!isSubscriptionActive(user)) return true;
+    return normalizePlanId(user?.planId || "free") === "free";
+  }
+  return !sitePlanId || sitePlanId === "free";
+}
+
+export async function ownerHasFreeWebsite(userId) {
+  const user = await getUserById(userId);
+  if (!user) return false;
+  const sites = await listSitesByOwner(userId);
+  return sites.some((site) => siteUsesFreePlan(site, user, sites));
+}
+
+/** Get plan features for a specific site (per-site capabilities). */
+export function sitePlanFeatures(site, user, sites = null) {
+  if (!site) return planFeatures(user);
+
+  const raw = String(site.planId || "free").toLowerCase();
+  const sitePlanId = raw === "live" ? "custom" : raw;
+  const oldestId = sites ? oldestSiteId(sites) : null;
+  const inheritsAccount =
+    (!sitePlanId || sitePlanId === "free") && (oldestId == null || Number(oldestId) === Number(site.id));
+  if (inheritsAccount) return planFeatures(user);
+  if (!sitePlanId || sitePlanId === "free") {
+    return {
+      live: false,
+      hosting: false,
+      domain: false,
+      pwa: false,
+      technonaireAddress: null,
+      premiumTemplates: true,
+      templateSwitch: true,
+    };
+  }
+  
+  // Check if user's subscription is active
+  if (!isSubscriptionActive(user)) {
+    return {
+      live: false,
+      hosting: false,
+      domain: false,
+      pwa: false,
+      technonaireAddress: null,
+      premiumTemplates: true,
+      templateSwitch: true,
+    };
+  }
+  
+  // Return features for the site's specific plan
+  const plan = getPlan(sitePlanId);
+  return {
+    live: false,
+    hosting: false,
+    domain: false,
+    pwa: false,
+    technonaireAddress: null,
+    premiumTemplates: true,
+    templateSwitch: true,
+    ...(plan?.features || {}),
+  };
+}
+
 /** Free and paid: all templates allowed. Site count is limited by site_slots. */
 export function canUseTemplate(user, templateId) {
   if (user?.role === "admin") return true;
@@ -509,7 +610,7 @@ export function billingPublicFields(user, { sitesUsed, liveSites, purchasedAddon
   const plan = resolveActivePlan(user);
   const stripe = isStripeConfigured();
   const features = planFeatures(user);
-  const siteSlots = Math.min(MAX_SITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
+  const siteSlots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
   const used = Number.isFinite(sitesUsed) ? Number(sitesUsed) : null;
   const live =
     Number.isFinite(liveSites) ? Math.max(0, Number(liveSites) || 0) : null;
@@ -552,8 +653,9 @@ export function billingPublicFields(user, { sitesUsed, liveSites, purchasedAddon
     liveUnitPriceCents: unitCents,
     estimatedMonthlyCents,
     canCreateSite: used == null ? null : used < siteSlots,
-    canBuyAddon: siteSlots < MAX_SITE_SLOTS,
-    maxSiteSlots: MAX_SITE_SLOTS,
+    canBuyAddon: siteSlots < MAX_WEBSITE_SLOTS,
+    maxWebsiteSlots: MAX_WEBSITE_SLOTS,
+    maxSiteSlots: MAX_WEBSITE_SLOTS,
     canGoLive: Boolean(features.live) && (user.role === "owner" || user.role === "admin"),
     canStartTrial: false,
     canSubscribe: user.role === "owner",
@@ -651,7 +753,7 @@ export async function syncStripeLiveQuantity(userId) {
 
 /**
  * Mark a site live or draft. Requires a paid Starter / Custom / Domain / Pro plan.
- * Assigns a random *.technonaire.site subdomain on first go-live when plan uses random address.
+ * Assigns a random subdomain on first go-live when plan uses random address.
  * Syncs Stripe quantity to match live site count.
  */
 export async function setOwnerSiteLive(userId, siteId, live) {
@@ -661,22 +763,32 @@ export async function setOwnerSiteLive(userId, siteId, live) {
   let site = await getSiteById(siteId);
   if (!site || !ownerOwnsSite(user, site)) throw new Error("Site not found");
 
-  const features = planFeatures(user);
+  const ownedSites = await listSitesByOwner(userId);
+  const features = sitePlanFeatures(site, user, ownedSites);
   if (live) {
     if (!features.live) {
       throw new Error(
-        "Subscribe to Starter, Custom, Domain, or Pro to make a website live.",
+        "Choose Starter, Custom, Domain, or Pro for this website before it can go live.",
       );
     }
-    const slots = Math.min(MAX_SITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
+    const slots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
     const currentlyLive = await countLiveSitesByOwner(userId);
     if (!isSiteLive(site) && currentlyLive >= slots) {
       throw new Error(
-        `You can only have ${slots} live website${slots === 1 ? "" : "s"} with your current slots. Buy more website slots in Profile.`,
+        `You can only have ${slots} live website${slots === 1 ? "" : "s"}. Add a website on a plan to increase your limit.`,
       );
     }
 
-    if (features.technonaireAddress === "random" || features.technonaireAddress === "chosen") {
+    // Domain plan: require verified custom domain OR Technonaire subdomain
+    if (features.domain && site.customDomain) {
+      if (site.domainStatus !== "verified") {
+        throw new Error(
+          "Your custom domain must be verified before publishing. Complete DNS setup in your website settings.",
+        );
+      }
+      // Domain is verified, no need for subdomain
+    } else if (features.technonaireAddress === "random" || features.technonaireAddress === "chosen") {
+      // Starter/Custom plan: ensure subdomain exists
       site = await ensureSiteSubdomain(site.id);
     }
 
@@ -787,9 +899,148 @@ export async function startTrial() {
   throw new Error("Free trial is not available. Subscribe to Starter, Custom, Domain, or Pro to go live.");
 }
 
+/**
+ * Handle payment failure - start grace period
+ */
+export async function startGracePeriod(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error("User not found");
+  
+  const gracePeriodEnd = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+  
+  await query(
+    `UPDATE users 
+     SET payment_failed_at = COALESCE(payment_failed_at, now()),
+         grace_period_ends_at = $2,
+         subscription_status = 'past_due'
+     WHERE id = $1`,
+    [id, gracePeriodEnd.toISOString()]
+  );
+  
+  return getUserById(id);
+}
+
+/**
+ * Clear grace period - payment succeeded
+ */
+export async function clearGracePeriod(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error("User not found");
+  
+  await query(
+    `UPDATE users 
+     SET payment_failed_at = NULL,
+         grace_period_ends_at = NULL
+     WHERE id = $1`,
+    [id]
+  );
+  
+  return getUserById(id);
+}
+
+/**
+ * Unpublish all sites for a user (grace period expired)
+ */
+export async function unpublishUserSites(userId, reason = "payment_failed") {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error("User not found");
+  
+  await query(
+    `UPDATE sites 
+     SET status = 'draft',
+         unpublished_at = now(),
+         unpublish_reason = $2
+     WHERE owner_id = $1 AND status = 'published'`,
+    [id, reason]
+  );
+}
+
+/**
+ * Check and enforce grace periods for all users
+ * Run this periodically (cron job or background task)
+ */
+export async function enforceGracePeriods() {
+  const { rows } = await query(
+    `SELECT id, email, name, grace_period_ends_at, payment_failed_at
+     FROM users
+     WHERE grace_period_ends_at IS NOT NULL
+       AND grace_period_ends_at < now()
+       AND subscription_status = 'past_due'`
+  );
+  
+  const results = [];
+  for (const user of rows) {
+    try {
+      await unpublishUserSites(user.id, "grace_period_expired");
+      await query(
+        `UPDATE users 
+         SET subscription_status = 'unpaid'
+         WHERE id = $1`,
+        [user.id]
+      );
+      results.push({ userId: user.id, email: user.email, unpublished: true });
+    } catch (error) {
+      results.push({ userId: user.id, email: user.email, error: error.message });
+    }
+  }
+  
+  return results;
+}
+
+/**
+ * Release custom subdomains and domains after 30 days unpaid
+ */
+export async function releaseStaleDomains() {
+  const releaseDate = new Date(Date.now() - DOMAIN_RELEASE_DAYS * 24 * 60 * 60 * 1000);
+  
+  const { rows } = await query(
+    `SELECT s.id, s.subdomain, s.custom_domain, s.owner_id
+     FROM sites s
+     JOIN users u ON s.owner_id = u.id
+     WHERE s.unpublished_at < $1
+       AND (s.subdomain IS NOT NULL OR s.custom_domain IS NOT NULL)
+       AND u.subscription_status IN ('unpaid', 'canceled')`,
+    [releaseDate.toISOString()]
+  );
+  
+  const results = [];
+  for (const site of rows) {
+    try {
+      // Clear subdomain and custom domain
+      await query(
+        `UPDATE sites 
+         SET subdomain = NULL,
+             custom_domain = NULL,
+             domain_status = 'none',
+             cf_hostname_id = NULL,
+             cf_hostname_status = NULL,
+             cf_ssl_status = NULL,
+             cf_validation_records = NULL,
+             cf_metadata = NULL
+         WHERE id = $1`,
+        [site.id]
+      );
+      
+      results.push({ 
+        siteId: site.id, 
+        subdomain: site.subdomain, 
+        customDomain: site.custom_domain,
+        released: true 
+      });
+    } catch (error) {
+      results.push({ 
+        siteId: site.id, 
+        error: error.message 
+      });
+    }
+  }
+  
+  return results;
+}
+
 export async function createInvoice(
   userId,
-  { planId = DEFAULT_PLAN_ID, addonId = null, amountCents, note = "", stripeSessionId = null } = {},
+  { planId = DEFAULT_PLAN_ID, addonId = null, amountCents, note = "", stripeSessionId = null, slotPlanId = null, currency = null } = {},
 ) {
   const id = Number(userId);
   const addon = addonId ? getAddon(addonId) : null;
@@ -802,14 +1053,14 @@ export async function createInvoice(
       ? addon.priceCents
       : plan.priceCents;
   const { rows } = await query(
-    `INSERT INTO invoices (user_id, number, amount_cents, currency, status, due_at, note, plan_id, stripe_session_id, addon_id)
-     VALUES ($1, $2, $3, $4, 'open', $5, $6, $7, $8, $9)
+    `INSERT INTO invoices (user_id, number, amount_cents, currency, status, due_at, note, plan_id, stripe_session_id, addon_id, slot_plan_id)
+     VALUES ($1, $2, $3, $4, 'open', $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       id,
       number,
       cents,
-      BILLING_CURRENCY,
+      currency || BILLING_CURRENCY,
       due.toISOString(),
       note ||
         (addon
@@ -818,6 +1069,7 @@ export async function createInvoice(
       addon ? "free" : plan.id,
       stripeSessionId,
       addon?.id || null,
+      slotPlanId || null,
     ],
   );
   return mapInvoice(rows[0]);
@@ -829,7 +1081,7 @@ export async function incrementSiteSlots(userId, slots) {
   await query(
     `UPDATE users SET site_slots = LEAST($3, GREATEST(1, COALESCE(site_slots, 1) + $2)), payment_updated_at = now()
      WHERE id = $1`,
-    [Number(userId), add, MAX_SITE_SLOTS],
+    [Number(userId), add, MAX_WEBSITE_SLOTS],
   );
   return publicUser(await getUserById(userId));
 }
@@ -955,6 +1207,12 @@ export async function subscribeManual(userId, planId = DEFAULT_PLAN_ID) {
   if (user.role !== "owner") throw new Error("Only site owners can subscribe");
 
   const plan = getPlan(planId);
+  
+  // Block Pro plan from being purchased via Stripe
+  if (!isPlanPurchasable(planId)) {
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us at hello@technonaire.com`);
+  }
+
   const invoice = await createInvoice(userId, {
     planId: plan.id,
     note: `${plan.name} — $${(plan.priceCents / 100).toFixed(0)}/mo USD. Pay with Stripe Checkout.`,
@@ -1120,6 +1378,12 @@ export async function upgradeStripeSubscription(userId, planId) {
   if (!user) throw new Error("User not found");
   if (user.role !== "owner") throw new Error("Only site owners can subscribe");
 
+  // Block Pro plan from being purchased via Stripe
+  if (!isPlanPurchasable(planId)) {
+    const plan = getPlan(planId);
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us at hello@technonaire.com`);
+  }
+
   const sub = await getUsableStripeSubscription(user);
   if (!sub) {
     throw new Error(
@@ -1210,7 +1474,7 @@ export async function upgradeStripeSubscription(userId, planId) {
     billing: billingPublicFields(updatedUser, { sitesUsed, liveSites }),
     invoice: await getInvoiceById(invoice.id),
     plan: listPlans().find((p) => p.id === plan.id),
-    message: `Upgraded to ${plan.name}. Charged ${moneyLabel(differenceCents)} now (the difference). Starting next month you’ll pay ${plan.priceLabel}${plan.additionalPriceLabel ? ` (additional sites ${plan.additionalPriceLabel})` : ""}.`,
+    message: `Upgraded to ${plan.name}. Charged ${moneyLabel(differenceCents)} now (the difference). Starting next month you’ll pay ${plan.priceLabel}.`,
   };
 }
 
@@ -1279,12 +1543,56 @@ export async function downgradeStripeSubscription(userId, planId) {
     billing: billingPublicFields(updatedUser, { sitesUsed, liveSites }),
     invoice: await getInvoiceById(invoice.id),
     plan: listPlans().find((p) => p.id === plan.id),
-    message: `Switched to ${plan.name}. No charge now — you keep access on this billing period. Starting next month you’ll pay ${plan.priceLabel}${plan.additionalPriceLabel ? ` (additional sites ${plan.additionalPriceLabel})` : ""}.`,
+    message: `Switched to ${plan.name}. No charge now — you keep access on this billing period. Starting next month you’ll pay ${plan.priceLabel}.`,
+  };
+}
+
+/**
+ * Cancel subscription at period end (no proration)
+ * User keeps access until current period ends, then reverts to Free plan
+ */
+export async function cancelStripeSubscription(userId) {
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "owner") throw new Error("Only site owners can cancel subscriptions");
+
+  const sub = await getUsableStripeSubscription(user);
+  if (!sub) {
+    throw new Error("No active subscription to cancel");
+  }
+
+  const stripe = getStripe();
+  
+  // Cancel at period end (user keeps access until then)
+  const updatedSub = await stripe.subscriptions.update(sub.id, {
+    cancel_at_period_end: true,
+  });
+
+  const periodEndSec = stripeSubscriptionPeriodEndSec(updatedSub);
+  const periodEnd = new Date(periodEndSec * 1000);
+
+  // Keep subscription status as active until period ends
+  const updatedUser = await updateUserBilling(userId, {
+    subscriptionStatus: "canceled", // canceled but still active until period end
+    currentPeriodEnd: periodEnd.toISOString(),
+  });
+
+  const sitesUsed = await countSitesByOwner(userId);
+  const liveSites = await countLiveSitesByOwner(userId);
+  
+  return {
+    canceled: true,
+    user: updatedUser,
+    billing: billingPublicFields(updatedUser, { sitesUsed, liveSites }),
+    periodEnd: periodEnd.toISOString(),
+    message: `Subscription canceled. You keep access until ${periodEnd.toLocaleDateString()}. After that, your sites will be unpublished and custom domains/subdomains will be released within 30 days.`,
   };
 }
 
 /** Create Stripe Checkout session for a plan (sandbox or live). */
-export async function createStripeCheckout(userId, planId = "starter", { returnTo } = {}) {
+export async function createStripeCheckout(userId, planId = "starter", { returnTo, billingInterval = "monthly", couponCode = "" } = {}) {
   if (!isStripeConfigured()) throw new Error("Stripe is not configured");
 
   const user = await getUserById(userId);
@@ -1296,8 +1604,9 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
     throw new Error("Choose a paid package to checkout with Stripe");
   }
 
+  const interval = billingInterval === "yearly" ? "yearly" : "monthly";
   const existingSub = await getUsableStripeSubscription(user);
-  if (existingSub && isSubscriptionActive(user)) {
+  if (existingSub && isSubscriptionActive(user) && interval !== "yearly") {
     const currentRank = planRank(user.planId || "free");
     const nextRank = planRank(plan.id);
     if (nextRank > currentRank) {
@@ -1338,6 +1647,20 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
 
   const liveCount = await countLiveSitesByOwner(userId);
   const quantity = Math.max(1, liveCount);
+  const { quotePlanCharge } = await import("./checkout-quote");
+  const quoted = await quotePlanCharge({
+    region: user.region || "usa",
+    planId: plan.id,
+    billingInterval: interval,
+    couponCode,
+    fallbackCents: plan.priceCents,
+    userId,
+  });
+  if (quoted.couponError) throw new Error(quoted.couponError);
+  if (quoted.discount && !quoted.stripeCouponId) {
+    throw new Error("Could not apply the discount in Stripe. Try again.");
+  }
+  const period = quoted.interval === "yearly" ? "year" : "month";
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -1347,13 +1670,15 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
     cancel_url: urls.cancel_url,
     // Sandbox / standard Checkout — Managed Payments requires extra tax setup
     managed_payments: { enabled: false },
+    ...cardOnlyCheckoutParams(),
+    discounts: quoted.stripeCouponId ? [{ coupon: quoted.stripeCouponId }] : undefined,
     line_items: [
       {
         quantity,
         price_data: {
-          currency: BILLING_CURRENCY,
-          unit_amount: plan.priceCents,
-          recurring: { interval: "month" },
+          currency: quoted.currency || BILLING_CURRENCY,
+          unit_amount: quoted.originalAmount,
+          recurring: { interval: period },
           product_data: {
             name: `Easy Website — ${plan.name}`,
             description: `${plan.description} Qty = live websites (min 1).`,
@@ -1370,15 +1695,19 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
       changeKind,
       liveQuantity: String(quantity),
       returnTo: urls.returnTo,
+      billingInterval: quoted.interval,
+      discountId: quoted.discount?.id ? String(quoted.discount.id) : "",
     },
     subscription_data: {
       metadata: {
         userId: String(user.id),
         planId: plan.id,
         liveQuantity: String(quantity),
+        billingInterval: quoted.interval,
+        discountId: quoted.discount?.id ? String(quoted.discount.id) : "",
       },
     },
-  });
+  }, cardOnlyCheckoutRequestOptions());
 
   return {
     url: session.url,
@@ -1388,28 +1717,72 @@ export async function createStripeCheckout(userId, planId = "starter", { returnT
   };
 }
 
+function assertWebsiteRoom(user) {
+  const currentSlots = Math.min(MAX_WEBSITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
+  if (currentSlots >= MAX_WEBSITE_SLOTS) {
+    throw new Error(
+      `You've reached the account limit of ${MAX_WEBSITE_SLOTS} websites. Contact us if you need more.`,
+    );
+  }
+}
+
+async function grantFreeWebsite(user, plan) {
+  if (await ownerHasFreeWebsite(user.id)) {
+    throw new Error(
+      "You can only have one website on the Free plan. Choose Starter, Custom, or Domain for another website.",
+    );
+  }
+  assertWebsiteRoom(user);
+  const updated = await incrementSiteSlots(user.id, 1);
+  return {
+    granted: true,
+    slotPlanId: plan.id,
+    user: updated,
+    message: `Added a website on ${plan.name}. Name it to create it.`,
+  };
+}
+
+/** Full plan price for one website. Same plan or a different plan both use this price. */
+async function quoteWebsitePlan(user, plan, billingInterval) {
+  const { quotePlanCharge } = await import("./checkout-quote");
+  return quotePlanCharge({
+    region: user.region || "usa",
+    planId: plan.id,
+    mode: "subscribe",
+    billingInterval: billingInterval === "yearly" ? "yearly" : "monthly",
+    userId: user.id,
+  });
+}
+
 /**
- * Stripe Checkout (payment mode) to buy a second website slot.
- * Charges the plan's additionalPriceCents (monthly rate) as a one-time payment,
- * then grants +1 site_slots on webhook / sync-checkout.
+ * Add one website on a chosen plan.
+ * Free grants the website immediately. A paid plan charges that plan's full price.
  */
-export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo } = {}) {
-  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo, billingInterval } = {}) {
   const user = await getUserById(userId);
   if (!user) throw new Error("User not found");
-  if (user.role !== "owner") throw new Error("Only site owners can buy extra slots");
+  if (user.role !== "owner") throw new Error("Only site owners can add a website");
 
-  // If a specific plan is requested for the slot, use that plan's pricing.
-  // Otherwise fall back to the user's current plan.
   const plan = slotPlanId ? getPlan(slotPlanId) : resolveActivePlan(user);
-  if (!plan.additionalPriceCents || plan.additionalPriceCents <= 0) {
-    throw new Error("The selected plan does not have a valid additional site price.");
+  if (plan.id !== "free" && !isPlanPurchasable(plan.id)) {
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us.`);
   }
+  if (plan.id === "free") return grantFreeWebsite(user, plan);
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
 
-  const currentSlots = Math.min(MAX_SITE_SLOTS, Math.max(1, Number(user.siteSlots) || 1));
-  if (currentSlots >= MAX_SITE_SLOTS) {
-    throw new Error("You already have the maximum number of website slots.");
+  assertWebsiteRoom(user);
+  const quoted = await quoteWebsitePlan(user, plan, billingInterval);
+  if (quoted.originalAmount == null || quoted.originalAmount < 0) {
+    throw new Error("This plan has no price for that billing period");
   }
+  if (!(quoted.finalAmount > 0)) return grantFreeWebsite(user, plan);
+
+  const { formatRegionAmount } = await import("./plan-price-label");
+  const period = quoted.interval === "yearly" ? "year" : "month";
+  const priceLabel = formatRegionAmount(quoted.finalAmount, (quoted.currency || "usd").toUpperCase(), {
+    per: period,
+  });
+  const slotLabel = `${plan.name} website · ${priceLabel}`;
 
   const stripe = getStripe();
   const base = appBaseUrl();
@@ -1426,11 +1799,6 @@ export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo } = {}) {
     await updateUserBilling(user.id, { stripeCustomerId: customerId });
   }
 
-  const isFreePlan = plan.id === "free";
-  const slotLabel = isFreePlan
-    ? "Additional website slot (Free plan · $5/month)"
-    : `Additional website slot (${plan.name} · ${plan.additionalPriceLabel})`;
-
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer: customerId,
@@ -1438,19 +1806,16 @@ export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo } = {}) {
     success_url: urls.success_url,
     cancel_url: urls.cancel_url,
     managed_payments: { enabled: false },
+    ...cardOnlyCheckoutParams(),
     line_items: [
       {
         quantity: 1,
         price_data: {
-          currency: BILLING_CURRENCY,
-          unit_amount: plan.additionalPriceCents,
+          currency: quoted.currency || BILLING_CURRENCY,
+          unit_amount: quoted.finalAmount,
           product_data: {
-            name: isFreePlan
-              ? "Additional website (Free plan)"
-              : `${plan.name} — additional website`,
-            description: isFreePlan
-              ? "Second website slot on the Free plan. $5/month."
-              : `Second website slot on your ${plan.name} plan. ${plan.additionalPriceLabel} per month.`,
+            name: `${plan.name} website`,
+            description: `Another website on the ${plan.name} plan, billed at the full plan price.`,
             tax_code: "txcd_10103001",
           },
         },
@@ -1460,13 +1825,14 @@ export async function buyExtraSiteSlot(userId, slotPlanId, { returnTo } = {}) {
       userId: String(user.id),
       addonId: "site_plus_1",
       planId: plan.id,
+      slotPlanId: plan.id,
       kind: "addon",
       note: slotLabel,
       returnTo: urls.returnTo,
     },
-  });
+  }, cardOnlyCheckoutRequestOptions());
 
-  return { url: session.url, sessionId: session.id };
+  return { url: session.url, sessionId: session.id, granted: false, slotPlanId: plan.id };
 }
 
 /** One-time Stripe Checkout for website slot add-ons. */
@@ -1515,6 +1881,7 @@ export async function createStripeAddonCheckout(userId, addonId, { returnTo } = 
     success_url: urls.success_url,
     cancel_url: urls.cancel_url,
     managed_payments: { enabled: false },
+    ...cardOnlyCheckoutParams(),
     line_items: [
       {
         quantity: 1,
@@ -1535,7 +1902,7 @@ export async function createStripeAddonCheckout(userId, addonId, { returnTo } = 
       kind: "addon",
       returnTo: urls.returnTo,
     },
-  });
+  }, cardOnlyCheckoutRequestOptions());
 
   return {
     url: session.url,
@@ -1574,6 +1941,7 @@ export async function syncCheckoutSession(sessionId) {
     invoiceUrl: invoice?.id ? `/invoice/${invoice.id}` : null,
     kind: session.metadata?.kind || session.mode,
     addonId: session.metadata?.addonId || null,
+    slotPlanId: session.metadata?.slotPlanId || null,
     returnTo: normalizeBillingReturnTo(session.metadata?.returnTo, "plan"),
   };
 }
@@ -1582,6 +1950,7 @@ export async function applyAddonCheckoutSession(session) {
   const userId = Number(session.metadata?.userId || session.client_reference_id);
   const addonId = session.metadata?.addonId;
   const invoiceId = session.metadata?.invoiceId;
+  const slotPlanId = session.metadata?.slotPlanId || null;
   if (!Number.isFinite(userId)) throw new Error("Missing user on Stripe session");
 
   const addon = getAddon(addonId);
@@ -1602,6 +1971,7 @@ export async function applyAddonCheckoutSession(session) {
         addonId: addon.id,
         note: session.metadata?.note || `${addon.name} — paid via Stripe`,
         stripeSessionId: session.id,
+        slotPlanId,
       });
       const result = await grantAddonPurchase(created.id);
       paidInvoice = result.invoice;
@@ -1618,6 +1988,7 @@ export async function applyAddonCheckoutSession(session) {
         addonId: addon.id,
         note: session.metadata?.note || `${addon.name} — paid via Stripe`,
         stripeSessionId: session.id,
+        slotPlanId,
       });
       const result = await grantAddonPurchase(created.id);
       paidInvoice = result.invoice;
@@ -1698,6 +2069,16 @@ export async function applyCheckoutSession(session) {
     stripeCustomerId: customerId,
     stripeSubscriptionId: newSubId,
   });
+
+  const discountId = Number(session.metadata?.discountId);
+  if (Number.isFinite(discountId) && discountId > 0) {
+    try {
+      const { redeemDiscount } = await import("./discounts");
+      await redeemDiscount(discountId, userId, newSubId || null);
+    } catch (err) {
+      console.error("Discount redemption failed:", err);
+    }
+  }
 
   if (invoiceId) {
     await query(
@@ -1800,6 +2181,280 @@ export async function cancelSubscription(userId) {
   });
 }
 
+/** Create a SetupIntent to collect payment method without charging (for on-site flow). */
+export async function createSetupIntent(userId) {
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "owner") throw new Error("Only owners can add payment methods");
+
+  const stripe = getStripe();
+  let customerId = user.stripeCustomerId;
+
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: user.email,
+      name: user.name || undefined,
+      metadata: { userId: String(user.id) },
+    });
+    customerId = customer.id;
+    await updateUserBilling(user.id, { stripeCustomerId: customerId });
+  }
+
+  const setupIntent = await stripe.setupIntents.create({
+    customer: customerId,
+    payment_method_types: ["card"],
+    usage: "off_session",
+    metadata: {
+      userId: String(user.id),
+    },
+  });
+
+  return {
+    clientSecret: setupIntent.client_secret,
+    customerId,
+  };
+}
+
+/** Subscribe to a plan on-site using the customer's saved payment method. */
+export async function subscribeWithSavedCard(userId, planId = "starter", { billingInterval = "monthly", couponCode = "" } = {}) {
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "owner") throw new Error("Only owners can subscribe");
+
+  const plan = getPlan(planId);
+  
+  // Block Pro plan from being purchased via Stripe
+  if (!isPlanPurchasable(planId)) {
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us at hello@technonaire.com`);
+  }
+  
+  if (plan.id === "free" || plan.priceCents <= 0) {
+    throw new Error("Choose a paid package to subscribe");
+  }
+
+  const interval = billingInterval === "yearly" ? "yearly" : "monthly";
+  const existingSub = await getUsableStripeSubscription(user);
+  if (existingSub && isSubscriptionActive(user) && interval !== "yearly") {
+    const currentRank = planRank(user.planId || "free");
+    const nextRank = planRank(plan.id);
+    if (nextRank > currentRank) {
+      return upgradeStripeSubscription(userId, plan.id);
+    }
+    if (nextRank < currentRank) {
+      return downgradeStripeSubscription(userId, plan.id);
+    }
+    if (plan.id === normalizePlanId(user.planId)) {
+      return resumeStripeSubscription(userId);
+    }
+  }
+
+  const stripe = getStripe();
+  const customerId = user.stripeCustomerId;
+  if (!customerId) throw new Error("No Stripe customer on this account");
+
+  const customer = await stripe.customers.retrieve(customerId);
+  if (!customer || customer.deleted) throw new Error("Stripe customer not found");
+
+  let pmId = customer.invoice_settings?.default_payment_method;
+  pmId = typeof pmId === "string" ? pmId : pmId?.id || null;
+
+  if (!pmId) {
+    const cards = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: "card",
+      limit: 1,
+    });
+    pmId = cards.data[0]?.id || null;
+  }
+
+  if (!pmId) {
+    throw new Error("No payment method on file. Add a card first.");
+  }
+
+  await voidOpenCheckoutInvoices(userId);
+
+  const liveCount = await countLiveSitesByOwner(userId);
+  const quantity = Math.max(1, liveCount);
+  const { quotePlanCharge } = await import("./checkout-quote");
+  const quoted = await quotePlanCharge({
+    region: user.region || "usa",
+    planId: plan.id,
+    billingInterval: interval,
+    couponCode,
+    fallbackCents: plan.priceCents,
+    userId,
+  });
+  if (quoted.couponError) throw new Error(quoted.couponError);
+  if (quoted.discount && !quoted.stripeCouponId) {
+    throw new Error("Could not apply the discount in Stripe. Try again.");
+  }
+  const period = quoted.interval === "yearly" ? "year" : "month";
+
+  const product = await stripe.products.create({
+    name: `Easy Website — ${plan.name}`,
+    metadata: { planId: plan.id },
+  });
+
+  const price = await stripe.prices.create({
+    currency: quoted.currency || BILLING_CURRENCY,
+    unit_amount: quoted.originalAmount,
+    recurring: { interval: period },
+    product: product.id,
+    metadata: { planId: plan.id, billingInterval: quoted.interval },
+  });
+
+  const subscription = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [{ price: price.id, quantity }],
+    discounts: quoted.stripeCouponId ? [{ coupon: quoted.stripeCouponId }] : undefined,
+    default_payment_method: pmId,
+    payment_behavior: "default_incomplete",
+    expand: ["latest_invoice"],
+    metadata: {
+      userId: String(user.id),
+      planId: plan.id,
+      liveQuantity: String(quantity),
+      billingInterval: quoted.interval,
+      discountId: quoted.discount?.id ? String(quoted.discount.id) : "",
+    },
+  });
+
+  const periodEndSec = stripeSubscriptionPeriodEndSec(subscription);
+  const periodEnd = new Date(periodEndSec * 1000).toISOString();
+
+  const invoice = await createInvoice(userId, {
+    planId: plan.id,
+    note: `${plan.name} — paid on-site via Stripe`,
+  });
+  await query(
+    `UPDATE invoices SET status = 'paid', paid_at = now(), updated_at = now() WHERE id = $1`,
+    [invoice.id],
+  );
+
+  const updatedUser = await updateUserBilling(userId, {
+    subscriptionStatus: "active",
+    currentPeriodEnd: periodEnd,
+    clearTrialEnds: true,
+    trialUsed: true,
+    planId: plan.id,
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: subscription.id,
+  });
+
+  if (quoted.discount?.id) {
+    try {
+      const { redeemDiscount } = await import("./discounts");
+      await redeemDiscount(quoted.discount.id, userId, subscription.id);
+    } catch (err) {
+      console.error("Discount redemption failed:", err);
+    }
+  }
+
+  const sitesUsed = await countSitesByOwner(userId);
+  const liveSites = await countLiveSitesByOwner(userId);
+  const { formatRegionAmount } = await import("./plan-price-label");
+  const chargedLabel = formatRegionAmount(quoted.finalAmount, (quoted.currency || "usd").toUpperCase(), {
+    per: quoted.finalAmount > 0 ? period : null,
+  });
+  return {
+    subscription,
+    user: updatedUser,
+    billing: billingPublicFields(updatedUser, { sitesUsed, liveSites }),
+    invoice: await getInvoiceById(invoice.id),
+    plan: listPlans().find((p) => p.id === plan.id),
+    message: `Subscribed to ${plan.name}. Charged ${chargedLabel}.`,
+  };
+}
+
+/** Add one website on a chosen plan, charging the full plan price on the saved card. */
+export async function buyExtraSiteSlotOnSite(userId, slotPlanId, { billingInterval } = {}) {
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "owner") throw new Error("Only owners can add a website");
+
+  const plan = slotPlanId ? getPlan(slotPlanId) : resolveActivePlan(user);
+  if (plan.id === "free") return grantFreeWebsite(user, plan);
+  if (!isPlanPurchasable(plan.id)) {
+    throw new Error(`${plan.name} is not available for self-service purchase. Please contact us.`);
+  }
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+  assertWebsiteRoom(user);
+
+  const quoted = await quoteWebsitePlan(user, plan, billingInterval);
+  if (quoted.originalAmount == null || quoted.originalAmount < 0) {
+    throw new Error("This plan has no price for that billing period");
+  }
+  if (!(quoted.finalAmount > 0)) return grantFreeWebsite(user, plan);
+
+  const stripe = getStripe();
+  const customerId = user.stripeCustomerId;
+  if (!customerId) throw new Error("No Stripe customer on this account");
+
+  const customer = await stripe.customers.retrieve(customerId);
+  if (!customer || customer.deleted) throw new Error("Stripe customer not found");
+
+  let pmId = customer.invoice_settings?.default_payment_method;
+  pmId = typeof pmId === "string" ? pmId : pmId?.id || null;
+
+  if (!pmId) {
+    const cards = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: "card",
+      limit: 1,
+    });
+    pmId = cards.data[0]?.id || null;
+  }
+
+  if (!pmId) {
+    throw new Error("No payment method on file. Add a card first.");
+  }
+
+  const { formatRegionAmount } = await import("./plan-price-label");
+  const period = quoted.interval === "yearly" ? "year" : "month";
+  const priceLabel = formatRegionAmount(quoted.finalAmount, (quoted.currency || "usd").toUpperCase(), {
+    per: period,
+  });
+  const slotLabel = `${plan.name} website · ${priceLabel}`;
+
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: quoted.finalAmount,
+    currency: quoted.currency || BILLING_CURRENCY,
+    customer: customerId,
+    payment_method: pmId,
+    off_session: true,
+    confirm: true,
+    description: `${plan.name} website`,
+    metadata: {
+      userId: String(user.id),
+      addonId: "site_plus_1",
+      slotPlanId: plan.id,
+    },
+  });
+
+  if (paymentIntent.status !== "succeeded") {
+    throw new Error("Payment did not complete. Check your card or try again.");
+  }
+
+  const invoice = await createInvoice(userId, {
+    addonId: "site_plus_1",
+    amountCents: quoted.finalAmount,
+    currency: (quoted.currency || BILLING_CURRENCY).toUpperCase(),
+    note: slotLabel,
+    slotPlanId: plan.id,
+  });
+  const result = await grantAddonPurchase(invoice.id);
+
+  return {
+    paymentIntent,
+    user: result.user,
+    invoice: result.invoice,
+    slotPlanId: plan.id,
+    message: `Added a ${plan.name} website at ${priceLabel}. Name it to create it.`,
+  };
+}
+
 function mapInvoice(row) {
   if (!row) return null;
   const addon = row.addon_id ? getAddon(row.addon_id) : null;
@@ -1817,6 +2472,7 @@ function mapInvoice(row) {
     planId: plan.id,
     planName: addon ? addon.name : plan.name,
     addonId: addon?.id || null,
+    slotPlanId: row.slot_plan_id || null,
     stripeSessionId: row.stripe_session_id || null,
     createdAt: row.created_at,
   };

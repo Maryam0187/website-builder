@@ -17,25 +17,47 @@ import {
   sitePublicUrl,
 } from "@/lib/store-actions";
 import { getTemplate } from "@/lib/templates";
+import { REGIONS, detectRegionFromHeaders } from "@/lib/pricing";
 
 function mapOwnerSite(s) {
   return {
     id: s.id,
     slug: s.slug,
     subdomain: s.subdomain || null,
+    customDomain: s.customDomain || null,
+    domainStatus: s.domainStatus || "none",
+    domainVerifiedAt: s.domainVerifiedAt || null,
     liveUrl: sitePublicUrl(s),
     name: s.content?.brand?.name || s.slug,
     status: s.status,
     template: s.content?.template || "other",
     templateLabel: getTemplate(s.content?.template || "other").label,
+    planId: s.planId || "free",
+    createdAt: s.createdAt || null,
   };
 }
 
-export async function GET() {
+export async function GET(request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const fresh = publicUser(await getUserById(user.id));
+  let fresh = publicUser(await getUserById(user.id));
+  
+  // Auto-detect and set region on first load if not already set
+  if (!fresh.region) {
+    const detectedRegion = detectRegionFromHeaders(request.headers);
+    if (detectedRegion && detectedRegion !== 'usa') {
+      const { query } = await import("@/lib/db");
+      await query(
+        `UPDATE users SET region = $1 WHERE id = $2`,
+        [detectedRegion, user.id]
+      );
+      fresh.region = detectedRegion;
+    } else {
+      fresh.region = 'usa'; // default
+    }
+  }
+  
   let site = null;
   if (user.siteId) {
     site = await getSiteById(user.siteId);
@@ -50,9 +72,23 @@ export async function GET() {
       ? (await listSitesByOwner(user.id)).map(mapOwnerSite)
       : [];
 
+  let regionPrices = null;
+  let regions = [];
+  try {
+    const { getCachedPricing } = await import("@/lib/pricing-cache");
+    const { listBillingRegions } = await import("@/lib/billing-regions");
+    regionPrices = await getCachedPricing();
+    const listed = await listBillingRegions();
+    regions = listed.filter((item) => item.enabled || item.id === fresh.region);
+  } catch (err) {
+    console.error("Region pricing load failed:", err);
+  }
+
   return NextResponse.json({
     user: fresh,
     billing: billingPublicFields(fresh, { sitesUsed, liveSites, purchasedAddonIds, cardOnFile }),
+    regionPrices,
+    regions,
     invoices: await listInvoicesForUser(user.id),
     sites: ownerSites,
     site: site ? mapOwnerSite(site) : null,
@@ -71,6 +107,31 @@ export async function PATCH(request) {
   try {
     if (action === "profile") {
       const updated = await updateUserProfile(user.id, { name: body.name });
+      return NextResponse.json({ user: updated });
+    }
+
+    if (action === "update-region") {
+      // Allow region change only if not locked
+      const fresh = await getUserById(user.id);
+      if (fresh.regionLocked) {
+        return NextResponse.json(
+          { error: "Region is locked after first subscription. Contact support to change." },
+          { status: 400 }
+        );
+      }
+      
+      const newRegion = String(body.region || "").toLowerCase().trim();
+      if (!REGIONS[newRegion.toUpperCase()]) {
+        return NextResponse.json({ error: "Invalid region" }, { status: 400 });
+      }
+      
+      const { query } = await import("@/lib/db");
+      await query(
+        `UPDATE users SET region = $1, region_confirmed = true WHERE id = $2`,
+        [newRegion, user.id]
+      );
+      
+      const updated = publicUser(await getUserById(user.id));
       return NextResponse.json({ user: updated });
     }
 

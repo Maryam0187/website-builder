@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
+import { rateLimiters, applyRateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/mail";
 
 const DEFAULT_TO = "info@technonaire.com";
 
 export async function POST(request) {
+  // Rate limit: 3 requests per 5 minutes per IP
+  const rateCheck = await applyRateLimit(request, rateLimiters.contact, 'contact-form');
+  if (rateCheck.limited) return rateCheck.response;
+
   try {
     const body = await request.json();
     const name = String(body.name || "").trim();

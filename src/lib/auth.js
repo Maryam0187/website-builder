@@ -75,6 +75,9 @@ function mapUser(row) {
     stripeCustomerId: row.stripe_customer_id || null,
     stripeSubscriptionId: row.stripe_subscription_id || null,
     siteSlots: Math.max(1, Number(row.site_slots) || 1),
+    region: row.region || "usa",
+    regionLocked: Boolean(row.region_locked),
+    regionConfirmed: Boolean(row.region_confirmed),
     totpEnabled: Boolean(row.totp_enabled),
     totpSecret: row.totp_secret || null,
     totpPendingSecret: row.totp_pending_secret || null,
@@ -105,6 +108,9 @@ export function publicUser(user) {
     stripeCustomerId: user.stripeCustomerId || null,
     stripeSubscriptionId: user.stripeSubscriptionId || null,
     siteSlots: Math.max(1, Number(user.siteSlots) || 1),
+    region: user.region || "usa",
+    regionLocked: Boolean(user.regionLocked),
+    regionConfirmed: Boolean(user.regionConfirmed),
     totpEnabled: Boolean(user.totpEnabled),
     totpAskLife: normalizeTotpAskLife(user.totpAskLife),
   };
@@ -165,7 +171,12 @@ export async function ensureAdminUser() {
   const password = process.env.ADMIN_PASSWORD || "changeme123";
 
   const existing = await query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
-  if (existing.rows.length) return;
+  if (existing.rows.length) {
+    // Admin exists, seed pricing if needed
+    const { seedDefaultPricing } = await import("./seed-pricing");
+    await seedDefaultPricing();
+    return;
+  }
 
   const passwordHash = await hashPassword(password);
   await query(
@@ -173,6 +184,10 @@ export async function ensureAdminUser() {
      VALUES ($1, $2, 'admin', $3, false)`,
     [email, "Technonaire Admin", passwordHash],
   );
+  
+  // Seed pricing after admin creation
+  const { seedDefaultPricing } = await import("./seed-pricing");
+  await seedDefaultPricing();
 }
 
 export async function createSession(userId) {
