@@ -70,6 +70,14 @@ CLOUDFLARE_CNAME_TARGET=customers.technonairebuilder.com
 5. Next.js middleware reads `X-Forwarded-Host` and routes to `/site/custom-domain/mybusiness.com`
 6. Site is rendered and returned
 
+Custom hostnames such as `easeora.com` are not subdomains of `technonairebuilder.com`. The Worker route `*/*` on the `technonairebuilder.com` zone is what sends those requests through this Worker. Redeploy after changing routes:
+
+```bash
+npx wrangler deploy
+```
+
+In the customer’s DNS, the CNAME to `customers.technonairebuilder.com` must be DNS only (grey cloud). An orange cloud keeps the visitor on the customer’s Cloudflare account, which then calls Railway with `Host: easeora.com`.
+
 ## Alternative: Direct Worker Routes
 
 Instead of using fallback origin, you can route specific domains through the worker by adding them to `wrangler.toml`:
