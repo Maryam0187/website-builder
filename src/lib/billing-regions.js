@@ -115,6 +115,142 @@ export async function setBillingRegionEnabled(id, enabled) {
   return publicRegion(result.rows[0]);
 }
 
+/**
+ * Copy United States plan prices onto another region.
+ * The region's own currency stays in place. Amounts are copied as numbers.
+ */
+export async function copyUsaPrices(regionId, { userId, applyStripe } = {}) {
+  const id = String(regionId || "").trim().toLowerCase();
+  if (!id || id === "usa") throw new Error("Pick a region other than the United States.");
+  await ensureBillingRegions();
+  const region = await getBillingRegion(id);
+  if (!region) throw new Error("Region not found.");
+
+  const usaPlans = await query(
+    `SELECT * FROM pricing_configs WHERE region = 'usa' ORDER BY plan_id`
+  );
+  if (!usaPlans.rows.length) throw new Error("United States prices are not set yet.");
+
+  let stripeWarning = null;
+
+  for (const src of usaPlans.rows) {
+    const current = await query(
+      `SELECT * FROM pricing_configs WHERE region = $1 AND plan_id = $2`,
+      [id, src.plan_id]
+    );
+    let row = current.rows[0];
+    const firstSiteCents = Number(src.first_site_cents) || 0;
+    const extraSiteCents = Number(src.extra_site_cents) || 0;
+    const active = Boolean(src.active);
+    const firstChanged = !row || Number(row.first_site_cents) !== firstSiteCents;
+    const extraChanged = !row || Number(row.extra_site_cents) !== extraSiteCents;
+
+    let stripeFirst = region.stripe ? row?.stripe_first_site_price_id || null : null;
+    let stripeExtra = region.stripe ? row?.stripe_extra_site_price_id || null : null;
+
+    if (region.stripe && typeof applyStripe === "function") {
+      try {
+        const synced = await applyStripe({
+          regionId: id,
+          planId: src.plan_id,
+          configId: row?.id || null,
+          active,
+          firstSiteCents,
+          extraSiteCents,
+          oldFirst: row?.stripe_first_site_price_id || null,
+          oldExtra: row?.stripe_extra_site_price_id || null,
+          firstChanged,
+          extraChanged,
+        });
+        if (!synced) {
+          if (firstChanged) stripeFirst = null;
+          if (extraChanged) stripeExtra = null;
+        } else {
+          if (synced.first !== undefined) stripeFirst = synced.first;
+          if (synced.extra !== undefined) stripeExtra = synced.extra;
+          if (synced.warning) stripeWarning = synced.warning;
+        }
+      } catch (error) {
+        console.error("Stripe price copy failed:", error);
+        stripeWarning = "Saved the catalog prices. Stripe price update failed, so new checkouts will create a price from these amounts.";
+        if (firstChanged) stripeFirst = null;
+        if (extraChanged) stripeExtra = null;
+      }
+    } else if (region.stripe) {
+      if (firstChanged) stripeFirst = null;
+      if (extraChanged) stripeExtra = null;
+    }
+
+    if (!row) {
+      const inserted = await query(
+        `INSERT INTO pricing_configs
+          (region, plan_id, currency, first_site_cents, extra_site_cents, first_site_cents_yearly, extra_site_cents_yearly, active,
+           stripe_first_site_price_id, stripe_extra_site_price_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id`,
+        [
+          id,
+          src.plan_id,
+          region.currency,
+          firstSiteCents,
+          extraSiteCents,
+          src.first_site_cents_yearly ?? null,
+          src.extra_site_cents_yearly ?? null,
+          active,
+          stripeFirst,
+          stripeExtra,
+        ]
+      );
+      row = { id: inserted.rows[0].id };
+    } else {
+      await query(
+        `UPDATE pricing_configs
+         SET first_site_cents = $1,
+             extra_site_cents = $2,
+             first_site_cents_yearly = $3,
+             extra_site_cents_yearly = $4,
+             active = $5,
+             stripe_first_site_price_id = $6,
+             stripe_extra_site_price_id = $7
+         WHERE id = $8`,
+        [
+          firstSiteCents,
+          extraSiteCents,
+          src.first_site_cents_yearly ?? null,
+          src.extra_site_cents_yearly ?? null,
+          active,
+          stripeFirst,
+          stripeExtra,
+          row.id,
+        ]
+      );
+    }
+
+    await query(
+      `INSERT INTO pricing_history
+        (pricing_config_id, region, plan_id, currency, first_site_cents, extra_site_cents, active,
+         stripe_first_site_price_id, stripe_extra_site_price_id, changed_by_user_id, change_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        row.id,
+        id,
+        src.plan_id,
+        region.currency,
+        firstSiteCents,
+        extraSiteCents,
+        active,
+        stripeFirst,
+        stripeExtra,
+        userId || null,
+        "Matched United States prices",
+      ]
+    );
+  }
+
+  invalidatePricingCache();
+  return { region, warning: stripeWarning };
+}
+
 export async function deleteBillingRegion(id) {
   if (id === "usa") throw new Error("The United States region can't be deleted.");
   await ensureBillingRegions();

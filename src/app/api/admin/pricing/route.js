@@ -6,6 +6,7 @@ import { query } from "@/lib/db";
 import { getAllPricingConfigs, getPricingHistory, invalidatePricingCache } from "@/lib/pricing-cache";
 import {
   addBillingRegion,
+  copyUsaPrices,
   deleteBillingRegion,
   listBillingRegions,
   setBillingRegionEnabled,
@@ -13,6 +14,61 @@ import {
 import Stripe from "stripe";
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+async function syncCopiedStripePrices(plan) {
+  if (!stripe) return null;
+
+  async function replacePrice(name, cents, type, oldId) {
+    if (!(cents > 0)) {
+      if (oldId) await stripe.prices.update(oldId, { active: false });
+      return null;
+    }
+    const product = await stripe.products.create({
+      name,
+      metadata: {
+        region: plan.regionId,
+        planId: plan.planId,
+        type,
+        configId: plan.configId ? String(plan.configId) : "",
+      },
+    });
+    const price = await stripe.prices.create({
+      currency: "usd",
+      unit_amount: cents,
+      recurring: { interval: "month" },
+      product: product.id,
+      metadata: {
+        region: plan.regionId,
+        planId: plan.planId,
+        type,
+        configId: plan.configId ? String(plan.configId) : "",
+      },
+    });
+    if (oldId && oldId !== price.id) {
+      await stripe.prices.update(oldId, { active: false });
+    }
+    return price.id;
+  }
+
+  const next = {};
+  if (plan.active && plan.firstChanged) {
+    next.first = await replacePrice(
+      `${plan.planId.toUpperCase()} Plan - First Site (${plan.regionId.toUpperCase()})`,
+      plan.firstSiteCents,
+      "first_site",
+      plan.oldFirst
+    );
+  }
+  if (plan.active && plan.extraChanged) {
+    next.extra = await replacePrice(
+      `${plan.planId.toUpperCase()} Plan - Additional Site (${plan.regionId.toUpperCase()})`,
+      plan.extraSiteCents,
+      "extra_site",
+      plan.oldExtra
+    );
+  }
+  return next;
+}
 
 /**
  * GET /api/admin/pricing
@@ -92,6 +148,13 @@ export async function POST(request) {
     if (action === "delete-region") {
       await deleteBillingRegion(String(body.id || ""));
       return NextResponse.json({ success: true });
+    }
+    if (action === "copy-usa-prices") {
+      const result = await copyUsaPrices(body.id, {
+        userId: user.id,
+        applyStripe: (plan) => syncCopiedStripePrices(plan),
+      });
+      return NextResponse.json({ success: true, region: result.region, warning: result.warning });
     }
 
     const {

@@ -29,14 +29,15 @@ export default function RegionPricingPanel() {
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ name: "", id: "", currency: "USD", stripe: true });
+  const [matchTarget, setMatchTarget] = useState(null);
 
   useEffect(() => {
     fetchConfigs();
   }, []);
 
-  async function fetchConfigs() {
+  async function fetchConfigs({ quiet = false } = {}) {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const res = await fetch("/api/admin/pricing");
       
       if (res.status === 401 || res.status === 403) {
@@ -54,7 +55,7 @@ export default function RegionPricingPanel() {
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }
 
@@ -98,7 +99,7 @@ export default function RegionPricingPanel() {
         alert(data.warning);
       }
       
-      await fetchConfigs();
+      await fetchConfigs({ quiet: true });
       setEditingId(null);
       setFormData({});
     } catch (err) {
@@ -118,13 +119,19 @@ export default function RegionPricingPanel() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not update the region");
-      await fetchConfigs();
+      await fetchConfigs({ quiet: true });
       if (action === "add-region") {
         setShowAdd(false);
         setAddForm({ name: "", id: "", currency: "USD", stripe: true });
         setOpenRegion(data.region?.id || null);
       }
       if (action === "delete-region") setOpenRegion(null);
+      if (action === "copy-usa-prices") {
+        setEditingId(null);
+        setFormData({});
+        setMatchTarget(null);
+      }
+      if (data.warning) alert(data.warning);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -319,6 +326,16 @@ export default function RegionPricingPanel() {
                           >
                             {region.enabled ? "Disable" : "Enable"}
                           </button>
+                          {region.id !== "usa" ? (
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() => setMatchTarget(region)}
+                              className="font-semibold text-cyan-200 disabled:opacity-40"
+                            >
+                              Use USA prices
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             disabled={saving || region.id === "usa"}
@@ -341,8 +358,7 @@ export default function RegionPricingPanel() {
                             <thead>
                               <tr className="text-left text-xs uppercase tracking-wider text-blue-200/70">
                                 <th className="px-3 py-2">Plan</th>
-                                <th className="px-3 py-2">First site</th>
-                                <th className="px-3 py-2">Extra site</th>
+                                <th className="px-3 py-2">Price</th>
                                 <th className="px-3 py-2">Status</th>
                                 <th className="px-3 py-2"></th>
                               </tr>
@@ -356,25 +372,20 @@ export default function RegionPricingPanel() {
                                     <td className="px-3 py-3 text-sm font-medium text-white">
                                       {PLAN_NAMES[config.plan_id] || config.plan_id}
                                     </td>
-                                    {[
-                                      ["first_site_cents", "firstSiteAmount"],
-                                      ["extra_site_cents", "extraSiteAmount"],
-                                    ].map(([column, field]) => (
-                                      <td key={column} className="px-3 py-3 text-sm text-cyan-100">
-                                        {isEditing ? (
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            step={step}
-                                            value={formData[field]}
-                                            onChange={(event) => setFormData({ ...formData, [field]: event.target.value })}
-                                            className={inputClass}
-                                          />
-                                        ) : (
-                                          formatCurrency(config[column], config.currency)
-                                        )}
-                                      </td>
-                                    ))}
+                                    <td className="px-3 py-3 text-sm text-cyan-100">
+                                      {isEditing ? (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step={step}
+                                          value={formData.firstSiteAmount}
+                                          onChange={(event) => setFormData({ ...formData, firstSiteAmount: event.target.value })}
+                                          className={inputClass}
+                                        />
+                                      ) : (
+                                        formatCurrency(config.first_site_cents, config.currency)
+                                      )}
+                                    </td>
                                     <td className="px-3 py-3 text-sm">
                                       {isEditing ? (
                                         <label className="flex items-center text-blue-100">
@@ -393,7 +404,10 @@ export default function RegionPricingPanel() {
                                     <td className="px-3 py-3 text-sm">
                                       {isEditing ? (
                                         <div className="flex gap-2">
-                                          <button type="button" onClick={saveEdit} disabled={saving} className="font-semibold text-cyan-200 disabled:opacity-50">
+                                          <button type="button" onClick={saveEdit} disabled={saving} className="inline-flex items-center gap-2 font-semibold text-cyan-200 disabled:opacity-50">
+                                            {saving ? (
+                                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-cyan-200/30 border-t-cyan-200" aria-hidden />
+                                            ) : null}
                                             {saving ? "Saving…" : "Save"}
                                           </button>
                                           <button type="button" onClick={cancelEdit} disabled={saving} className="text-blue-100">
@@ -421,10 +435,82 @@ export default function RegionPricingPanel() {
           </table>
         </div>
 
+        {saving ? (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/10 bg-[#07122a] px-8 py-7 shadow-2xl">
+              <span
+                className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-400/25 border-t-cyan-300"
+                aria-hidden
+              />
+              <p className="text-sm font-medium text-blue-100">
+                {matchTarget ? `Updating ${matchTarget.name} prices…` : "Updating…"}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {matchTarget ? (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+            role="presentation"
+            onClick={saving ? undefined : () => setMatchTarget(null)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="match-usa-title"
+              className="w-full max-w-md rounded-3xl border border-white/10 bg-[#07122a] p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p className="text-xs font-bold tracking-[0.14em] text-cyan-300/90 uppercase">
+                Region pricing
+              </p>
+              <h3
+                id="match-usa-title"
+                className="mt-1 font-[family-name:var(--font-display)] text-xl font-semibold text-white"
+              >
+                Set {matchTarget.name} prices to match the United States?
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-blue-100/85">
+                {String(matchTarget.currency || "").toUpperCase() === "USD"
+                  ? `Each plan on ${matchTarget.name} will use the United States prices.`
+                  : `${matchTarget.name} uses ${matchTarget.currency}, so the numbers are copied without converting currency.`}
+              </p>
+              <div className="mt-6 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setMatchTarget(null)}
+                  className="rounded-full px-4 py-2.5 text-sm font-medium text-blue-100 hover:bg-white/5 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => regionAction("copy-usa-prices", { id: matchTarget.id })}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
+                >
+                  {saving ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden />
+                  ) : null}
+                  {saving ? "Updating…" : "Use USA prices"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-blue-100">
           <p className="font-semibold text-white">Notes</p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>Open a region to edit Starter, Custom, Domain, Free, and Pro.</li>
+            <li>Use USA prices copies that region’s plans from the United States.</li>
             <li>Disable hides the region from the plan page. Delete is blocked while customers still use it.</li>
             <li>Yearly billing is always 10 months of the monthly price, so customers get 2 months free. Leave Pro at 0 to keep it as Contact us.</li>
             <li>Card payments are available for USD regions. Pakistan stays on local activation.</li>
