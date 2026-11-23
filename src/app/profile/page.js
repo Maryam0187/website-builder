@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
@@ -91,6 +91,8 @@ export default function ProfilePage() {
   const [totpBusy, setTotpBusy] = useState(false);
   const [totpAskLife, setTotpAskLife] = useState("every");
   const [showChat, setShowChat] = useState(false);
+  const [chatDraft, setChatDraft] = useState(null);
+  const sentDomainHelp = useRef(new Set());
   const [showSiteSwitcherGuide, setShowSiteSwitcherGuide] = useState(false);
 
   useEffect(() => {
@@ -1236,6 +1238,18 @@ export default function ProfilePage() {
                                       applySitesFromResponse(data, item.id);
                                     }
                                   }}
+                                  onMessageUs={({ onceKey, body }) => {
+                                    setShowChat(true);
+                                    if (sentDomainHelp.current.has(onceKey)) {
+                                      setChatDraft(null);
+                                      return;
+                                    }
+                                    setChatDraft({
+                                      id: `${onceKey}:${Date.now()}`,
+                                      onceKey,
+                                      body,
+                                    });
+                                  }}
                                 />
                               </div>
                             )}
@@ -1656,7 +1670,15 @@ export default function ProfilePage() {
       </div>
 
       {user.role === "owner" ? (
-        <SupportChatSidebar open={showChat} onClose={() => setShowChat(false)} />
+        <SupportChatSidebar
+          open={showChat}
+          onClose={() => setShowChat(false)}
+          initialMessage={chatDraft}
+          onInitialMessageSent={(onceKey) => {
+            if (onceKey) sentDomainHelp.current.add(onceKey);
+            setChatDraft(null);
+          }}
+        />
       ) : null}
 
       <GoLiveDialog

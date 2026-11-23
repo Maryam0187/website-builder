@@ -78,9 +78,10 @@ describe("CustomDomainSetup UX Requirements", () => {
     );
     
     assert.ok(
+      componentCode.includes("Connect automatically") ||
       componentCode.includes("Add these records") ||
       componentCode.includes("domain provider"),
-      "Step 2 should be about adding DNS records"
+      "Step 2 should offer automatic connect or DNS records"
     );
     
     assert.ok(
