@@ -49,7 +49,8 @@ import {
   mapCloudflareStatus,
   mapCloudflareSslStatus,
   extractValidationRecords,
-  getMockVerificationRecords
+  getMockVerificationRecords,
+  createCustomHostname
 } from "../src/lib/cloudflare-client.js";
 
 describe("Cloudflare Client - Domain Utilities", () => {
@@ -263,6 +264,58 @@ describe("Error Handling", () => {
     const records = extractValidationRecords(malformed);
     // Should return empty array instead of crashing
     assert.ok(Array.isArray(records));
+  });
+});
+
+describe("Cloudflare Client - Duplicate hostname", () => {
+  it("reuses the hostname Cloudflare already has", async () => {
+    const previousToken = process.env.CLOUDFLARE_API_TOKEN;
+    const previousZone = process.env.CLOUDFLARE_ZONE_ID;
+    process.env.CLOUDFLARE_API_TOKEN = "test-token";
+    process.env.CLOUDFLARE_ZONE_ID = "zone123";
+    const originalFetch = global.fetch;
+
+    global.fetch = async (url, options = {}) => {
+      const method = options.method || "GET";
+      if (method === "POST") {
+        return {
+          ok: false,
+          json: async () => ({
+            success: false,
+            errors: [{ code: 1406, message: "Duplicate custom hostname found." }]
+          })
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          result: [{
+            id: "existing-id",
+            hostname: "easeora.com",
+            status: "pending_validation",
+            ssl: { status: "pending_validation" },
+            ownership_verification: {
+              type: "txt",
+              name: "_cf-custom-hostname.easeora.com",
+              value: "abc"
+            }
+          }]
+        })
+      };
+    };
+
+    try {
+      const result = await createCustomHostname("easeora.com");
+      assert.strictEqual(result.id, "existing-id");
+      assert.strictEqual(result.hostname, "easeora.com");
+    } finally {
+      global.fetch = originalFetch;
+      if (previousToken == null) delete process.env.CLOUDFLARE_API_TOKEN;
+      else process.env.CLOUDFLARE_API_TOKEN = previousToken;
+      if (previousZone == null) delete process.env.CLOUDFLARE_ZONE_ID;
+      else process.env.CLOUDFLARE_ZONE_ID = previousZone;
+    }
   });
 });
 

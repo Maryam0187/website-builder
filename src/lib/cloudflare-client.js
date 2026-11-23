@@ -60,7 +60,9 @@ async function cloudflareRequest(endpoint, options = {}) {
   if (!response.ok || !data.success) {
     const errors = data.errors || [];
     const errorMsg = errors.map(e => e.message).join(", ") || "Cloudflare API request failed";
-    throw new Error(errorMsg);
+    const error = new Error(errorMsg);
+    error.codes = errors.map(e => e.code).filter(code => code != null);
+    throw error;
   }
 
   return data.result;
@@ -101,6 +103,28 @@ export function getApexDomain(domain) {
  * @param {object} options - Additional options
  * @returns {Promise<object>} Custom hostname details
  */
+export function isDuplicateHostnameError(error) {
+  if (error?.codes?.includes(1406)) return true;
+  return String(error?.message || "").toLowerCase().includes("duplicate custom hostname");
+}
+
+/**
+ * Find a custom hostname Cloudflare already has for this name.
+ */
+export async function findCustomHostname(hostname) {
+  if (!isCloudflareConfigured()) {
+    throw new Error("Cloudflare is not configured");
+  }
+
+  const config = getCloudflareConfig();
+  const params = new URLSearchParams({ hostname });
+  const result = await cloudflareRequest(
+    `/zones/${config.zoneId}/custom_hostnames?${params}`
+  );
+  const list = Array.isArray(result) ? result : [];
+  return list.find(item => String(item?.hostname || "").toLowerCase() === hostname.toLowerCase()) || null;
+}
+
 export async function createCustomHostname(hostname, options = {}) {
   if (!isCloudflareConfigured()) {
     throw new Error("Cloudflare is not configured");
@@ -122,15 +146,20 @@ export async function createCustomHostname(hostname, options = {}) {
     ...options
   };
 
-  const result = await cloudflareRequest(
-    `/zones/${config.zoneId}/custom_hostnames`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    }
-  );
-
-  return result;
+  try {
+    return await cloudflareRequest(
+      `/zones/${config.zoneId}/custom_hostnames`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }
+    );
+  } catch (error) {
+    if (!isDuplicateHostnameError(error)) throw error;
+    const existing = await findCustomHostname(hostname);
+    if (!existing) throw error;
+    return existing;
+  }
 }
 
 /**

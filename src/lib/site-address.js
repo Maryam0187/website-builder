@@ -4,6 +4,7 @@ import {
   isCloudflareConfigured,
   createCustomHostnamesForDomain,
   checkCustomHostnamesStatus,
+  deleteCustomHostname,
   getMockVerificationRecords,
   mapCloudflareStatus,
   mapCloudflareSslStatus,
@@ -584,20 +585,22 @@ export async function removeCustomDomain(siteId, userId) {
   const site = siteRows[0];
 
   // Delete Cloudflare hostnames if configured
-  if (isCloudflareConfigured() && site.cf_metadata) {
+  if (isCloudflareConfigured()) {
     try {
-      const metadata = JSON.parse(site.cf_metadata);
-      if (metadata.hostnames && Array.isArray(metadata.hostnames)) {
-        // Delete all hostnames (apex and www if both exist)
-        const deleteCustomHostname = (await import("./cloudflare-client.js")).deleteCustomHostname;
-        await Promise.allSettled(
-          metadata.hostnames.map(h => deleteCustomHostname(h.id))
-        );
-      } else if (site.cf_hostname_id) {
-        // Fallback - delete primary hostname only
-        const deleteCustomHostname = (await import("./cloudflare-client.js")).deleteCustomHostname;
-        await deleteCustomHostname(site.cf_hostname_id);
+      let metadata = {};
+      try {
+        metadata = site.cf_metadata ? JSON.parse(site.cf_metadata) : {};
+      } catch {
+        metadata = {};
       }
+      const ids = new Set();
+      if (site.cf_hostname_id) ids.add(site.cf_hostname_id);
+      if (Array.isArray(metadata.hostnames)) {
+        metadata.hostnames.forEach(item => {
+          if (item?.id) ids.add(item.id);
+        });
+      }
+      await Promise.allSettled([...ids].map(id => deleteCustomHostname(id)));
     } catch (error) {
       console.warn("Failed to delete Cloudflare hostnames:", error);
       // Continue with database cleanup even if Cloudflare delete fails
