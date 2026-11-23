@@ -66,7 +66,14 @@ export default async function CustomDomainSitePage({ params }) {
     );
   }
 
-  return <SiteTemplate site={site} currentPage={pagePath || "home"} />;
+  return (
+    <SiteTemplate
+      content={site.content}
+      pageId={pagePath || "home"}
+      slug={site.slug}
+      basePath=""
+    />
+  );
 }
 
 export async function generateMetadata({ params }) {
