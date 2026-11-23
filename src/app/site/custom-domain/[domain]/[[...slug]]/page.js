@@ -4,6 +4,11 @@ import SiteTemplate from "@/components/template/SiteTemplate";
 import { notFound } from "next/navigation";
 import { normalizeSiteContent } from "@/lib/site-defaults";
 
+function lookupDomain(domain) {
+  const host = String(domain || "").toLowerCase();
+  return host.startsWith("www.") ? host.slice(4) : host;
+}
+
 async function getSiteByCustomDomain(domain) {
   const { rows } = await query(
     `SELECT * FROM sites WHERE lower(custom_domain) = lower($1) LIMIT 1`,
@@ -32,10 +37,10 @@ async function getSiteByCustomDomain(domain) {
 }
 
 export default async function CustomDomainSitePage({ params }) {
-  const domain = params.domain;
-  const pagePath = params.slug ? params.slug.join("/") : "";
+  const { domain, slug } = await params;
+  const pagePath = slug ? slug.join("/") : "";
 
-  const site = await getSiteByCustomDomain(domain);
+  const site = await getSiteByCustomDomain(lookupDomain(domain));
 
   if (!site) {
     notFound();
@@ -65,8 +70,8 @@ export default async function CustomDomainSitePage({ params }) {
 }
 
 export async function generateMetadata({ params }) {
-  const domain = params.domain;
-  const site = await getSiteByCustomDomain(domain);
+  const { domain } = await params;
+  const site = await getSiteByCustomDomain(lookupDomain(domain));
 
   if (!site) {
     return {
