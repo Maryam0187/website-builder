@@ -1,4 +1,4 @@
-const DEFAULT_HOST_ROOT = "technonaire.site";
+const DEFAULT_HOST_ROOT = "technonairebuilder.com";
 
 export const RESERVED_SUBDOMAINS = new Set([
   "www",
@@ -20,6 +20,8 @@ export const RESERVED_SUBDOMAINS = new Set([
   "help",
   "status",
   "docs",
+  "fallback",
+  "customers",
 ]);
 
 export function siteHostRoot() {
@@ -78,6 +80,7 @@ export function publicUrlForSubdomain(subdomain, { path = "", root = publicSiteH
  */
 export function subdomainFromHost(hostHeader, root = siteHostRoot()) {
   const host = String(hostHeader || "")
+    .split(",")[0]
     .split(":")[0]
     .trim()
     .toLowerCase();

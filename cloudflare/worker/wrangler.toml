@@ -1,0 +1,26 @@
+# Cloudflare Worker Configuration for Technonaire Website Builder
+# Deploy with: npx wrangler deploy
+
+name = "technonaire-website-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+workers_dev = false
+
+# Must stay above [vars]. Keys under [vars] are worker bindings, not routes.
+# */* matches customer hostnames (easeora.com) that enter this zone through
+# Cloudflare for SaaS. Without it, Cloudflare sends Host: easeora.com straight
+# to Railway, and Railway returns "The train has not arrived at the station."
+[[routes]]
+pattern = "*/*"
+zone_name = "technonairebuilder.com"
+
+[[routes]]
+pattern = "*.technonairebuilder.com/*"
+zone_name = "technonairebuilder.com"
+
+[[routes]]
+pattern = "technonairebuilder.com/*"
+zone_name = "technonairebuilder.com"
+
+[vars]
+RAILWAY_ORIGIN = "builder.technonaire.com"

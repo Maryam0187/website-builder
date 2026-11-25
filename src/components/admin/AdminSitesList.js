@@ -6,7 +6,7 @@ import AdminAddPageForm from "./AdminAddPageForm";
 import AdminOwnerPaymentForm from "./AdminOwnerPaymentForm";
 import { getTemplate, listTemplates } from "@/lib/templates";
 
-export default function AdminSitesList({ initialSites = [] }) {
+export default function AdminSitesList({ initialSites = [], limit = 8 }) {
   const [sites, setSites] = useState(initialSites);
   const [openId, setOpenId] = useState(null);
   const [paymentOpenId, setPaymentOpenId] = useState(null);
@@ -116,7 +116,7 @@ export default function AdminSitesList({ initialSites = [] }) {
         <p className="border-b border-white/10 px-6 py-2 text-xs text-cyan-200">{status}</p>
       )}
       <ul>
-        {sites.slice(0, 8).map((site) => {
+        {sites.slice(0, limit).map((site) => {
           const pageIds = Object.keys(site.content?.pages || {});
           const navLabels = (site.content?.nav || []).map((n) => n.label).join(" · ");
           const templateId = site.content?.template || "other";

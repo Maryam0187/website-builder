@@ -41,6 +41,7 @@ function MenuGrid({
                   <div>
                     <h2
                       className={`font-[family-name:var(--font-display)] text-2xl ${editable()}`}
+                      style={textStyle(content, `${base}.items.${index}.title`, "#ffffff")}
                       onClick={() =>
                         handle(`${base}.items.${index}.title`, "Item title", "text", "#ffffff")
                       }
@@ -49,6 +50,7 @@ function MenuGrid({
                     </h2>
                     <p
                       className={`mt-2 text-sm text-white/65 ${editable()}`}
+                      style={textStyle(content, `${base}.items.${index}.description`, "#ffffff")}
                       onClick={() =>
                         handle(
                           `${base}.items.${index}.description`,
@@ -118,6 +120,7 @@ function MenuGrid({
                   <div>
                     <h2
                       className={`text-2xl font-semibold ${editable()}`}
+                      style={textStyle(content, `${base}.items.${index}.title`, "#ffffff")}
                       onClick={() =>
                         handle(`${base}.items.${index}.title`, "Item title", "text", "#ffffff")
                       }
@@ -126,6 +129,7 @@ function MenuGrid({
                     </h2>
                     <p
                       className={`mt-3 text-base leading-7 text-white/70 ${editable()}`}
+                      style={textStyle(content, `${base}.items.${index}.description`, "#ffffff")}
                       onClick={() =>
                         handle(
                           `${base}.items.${index}.description`,
@@ -200,6 +204,7 @@ function MenuGrid({
                 <div className="p-5">
                   <h2
                     className={`text-lg font-semibold ${editable()}`}
+                    style={textStyle(content, `${base}.items.${index}.title`, "#ffffff")}
                     onClick={() =>
                       handle(`${base}.items.${index}.title`, "Item title", "text", "#ffffff")
                     }
@@ -208,6 +213,7 @@ function MenuGrid({
                   </h2>
                   <p
                     className={`mt-2 text-sm text-white/70 ${editable()}`}
+                    style={textStyle(content, `${base}.items.${index}.description`, "#ffffff")}
                     onClick={() =>
                       handle(
                         `${base}.items.${index}.description`,
@@ -284,6 +290,7 @@ function GalleryMasonry({ page, pageId, content, editable, handle, editMode, sta
                   />
                   <figcaption
                     className={`mt-2 text-sm text-white/75 ${editable()}`}
+                    style={textStyle(content, `${base}.items.${index}.caption`, "#ffffff")}
                     onClick={(e) => {
                       if (!editMode) return;
                       e.stopPropagation();
@@ -338,6 +345,7 @@ export function EditorialLayout(props) {
                 </h1>
                 <p
                   className={`tpl-fade-up tpl-fade-up-delay-2 mt-8 max-w-md text-lg leading-8 text-white/85 ${ctx.editable()}`}
+                  style={textStyle(ctx.content, "pages.home.hero.subheadline", "#ffffff")}
                   onClick={() =>
                     ctx.handle("pages.home.hero.subheadline", "Hero subheadline", "text", "#ffffff")
                   }
@@ -347,7 +355,7 @@ export function EditorialLayout(props) {
                 <a
                   href={ctx.contactHref}
                   className="tpl-fade-up tpl-fade-up-delay-3 tpl-cta-glow mt-10 inline-flex w-fit rounded-full px-8 py-3.5 text-sm font-semibold text-white"
-                  style={{ background: ctx.theme.primary }}
+                  style={{ background: ctx.theme.primary, ...textStyle(ctx.content, "pages.home.hero.cta", "#ffffff") }}
                   onClick={(e) => {
                     if (ctx.editMode) {
                       e.preventDefault();
@@ -386,12 +394,14 @@ export function EditorialLayout(props) {
                 <Reveal>
                   <h1
                     className={`font-[family-name:var(--font-display)] text-4xl font-semibold md:text-5xl ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.title`, "#ffffff")}
                     onClick={() => ctx.handle(`${base}.title`, "About title", "text", "#ffffff")}
                   >
                     {page.title}
                   </h1>
                   <p
                     className={`mt-6 text-lg leading-8 text-white/80 ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.body`, "#ffffff")}
                     onClick={() => ctx.handle(`${base}.body`, "About text", "textarea", "#ffffff")}
                   >
                     {page.body}
@@ -447,7 +457,7 @@ export function SereneLayout(props) {
                 </h1>
                 <p
                   className={`tpl-fade-up tpl-fade-up-delay-2 mt-6 max-w-md text-lg leading-8 ${ctx.editable()}`}
-                  style={{ color: ctx.theme.muted }}
+                  style={textStyle(ctx.content, "pages.home.hero.subheadline", ctx.theme.muted)}
                   onClick={() =>
                     ctx.handle(
                       "pages.home.hero.subheadline",
@@ -462,7 +472,7 @@ export function SereneLayout(props) {
                 <a
                   href={ctx.contactHref}
                   className="tpl-fade-up tpl-fade-up-delay-3 mt-10 inline-flex rounded-full px-7 py-3.5 text-sm font-semibold text-white"
-                  style={{ background: ctx.theme.primary }}
+                  style={{ background: ctx.theme.primary, ...textStyle(ctx.content, "pages.home.hero.cta", "#ffffff") }}
                   onClick={(e) => {
                     if (ctx.editMode) {
                       e.preventDefault();
@@ -492,7 +502,7 @@ export function SereneLayout(props) {
                 <Reveal>
                   <h1
                     className={`font-[family-name:var(--font-display)] text-4xl font-semibold md:text-5xl ${ctx.editable()}`}
-                    style={{ color: ctx.theme.text }}
+                    style={textStyle(ctx.content, `${base}.title`, ctx.theme.text)}
                     onClick={() =>
                       ctx.handle(`${base}.title`, "About title", "text", ctx.theme.text)
                     }
@@ -501,7 +511,7 @@ export function SereneLayout(props) {
                   </h1>
                   <p
                     className={`mt-6 text-lg leading-8 ${ctx.editable()}`}
-                    style={{ color: ctx.theme.muted }}
+                    style={textStyle(ctx.content, `${base}.body`, ctx.theme.muted)}
                     onClick={() =>
                       ctx.handle(`${base}.body`, "About text", "textarea", ctx.theme.muted)
                     }
@@ -530,6 +540,7 @@ export function SereneLayout(props) {
                 <Reveal>
                   <h1
                     className={`font-[family-name:var(--font-display)] text-4xl font-semibold md:text-5xl ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.title`, ctx.theme.text)}
                     onClick={() =>
                       ctx.handle(`${base}.title`, "Services title", "text", ctx.theme.text)
                     }
@@ -553,6 +564,7 @@ export function SereneLayout(props) {
                         </button>
                         <h2
                           className={`text-xl font-semibold ${ctx.editable()}`}
+                          style={textStyle(ctx.content, `${base}.items.${index}.title`, ctx.theme.text)}
                           onClick={() =>
                             ctx.handle(
                               `${base}.items.${index}.title`,
@@ -566,7 +578,7 @@ export function SereneLayout(props) {
                         </h2>
                         <p
                           className={`text-sm leading-6 ${ctx.editable()}`}
-                          style={{ color: ctx.theme.muted }}
+                          style={textStyle(ctx.content, `${base}.items.${index}.description`, ctx.theme.muted)}
                           onClick={() =>
                             ctx.handle(
                               `${base}.items.${index}.description`,
@@ -595,7 +607,7 @@ export function SereneLayout(props) {
                 <Reveal>
                   <h1
                     className={`font-[family-name:var(--font-display)] text-4xl font-semibold ${ctx.editable()}`}
-                    style={{ color: ctx.theme.text }}
+                    style={textStyle(ctx.content, `${base}.title`, ctx.theme.text)}
                     onClick={() =>
                       ctx.handle(`${base}.title`, "Gallery title", "text", ctx.theme.text)
                     }
@@ -655,6 +667,7 @@ export function TheaterLayout(props) {
                 <div className="tpl-fade-up mb-6 h-px w-16 bg-white/50" />
                 <h1
                   className={`tpl-fade-up tpl-fade-up-delay-1 font-[family-name:var(--font-display)] text-5xl leading-none font-semibold tracking-tight md:text-7xl ${ctx.editable()}`}
+                  style={textStyle(ctx.content, "pages.home.hero.headline", "#ffffff")}
                   onClick={() =>
                     ctx.handle("pages.home.hero.headline", "Hero headline", "text", "#ffffff")
                   }
@@ -663,6 +676,7 @@ export function TheaterLayout(props) {
                 </h1>
                 <p
                   className={`tpl-fade-up tpl-fade-up-delay-2 mt-8 max-w-lg text-base leading-8 text-white/80 md:text-lg ${ctx.editable()}`}
+                  style={textStyle(ctx.content, "pages.home.hero.subheadline", "#ffffff")}
                   onClick={() =>
                     ctx.handle("pages.home.hero.subheadline", "Hero subheadline", "text", "#ffffff")
                   }
@@ -672,6 +686,7 @@ export function TheaterLayout(props) {
                 <a
                   href="#menu"
                   className="tpl-fade-up tpl-fade-up-delay-3 mt-10 inline-flex rounded-full border border-white/40 px-8 py-3.5 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white/10"
+                  style={textStyle(ctx.content, "pages.home.hero.cta", "#ffffff")}
                   onClick={(e) => {
                     if (ctx.editMode) {
                       e.preventDefault();
@@ -707,12 +722,14 @@ export function TheaterLayout(props) {
                 <Reveal>
                   <h1
                     className={`font-[family-name:var(--font-display)] text-4xl font-semibold md:text-5xl ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.title`, "#ffffff")}
                     onClick={() => ctx.handle(`${base}.title`, "About title", "text", "#ffffff")}
                   >
                     {page.title}
                   </h1>
                   <p
                     className={`mt-8 text-lg leading-9 text-white/80 ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.body`, "#ffffff")}
                     onClick={() => ctx.handle(`${base}.body`, "About text", "textarea", "#ffffff")}
                   >
                     {page.body}
@@ -759,6 +776,7 @@ export function RetailLayout(props) {
                 <div className="max-w-xl border-l-4 pl-6" style={{ borderColor: ctx.theme.primary }}>
                   <h1
                     className={`tpl-fade-up font-[family-name:var(--font-display)] text-5xl font-semibold tracking-tight md:text-7xl ${ctx.editable()}`}
+                    style={textStyle(ctx.content, "pages.home.hero.headline", "#ffffff")}
                     onClick={() =>
                       ctx.handle("pages.home.hero.headline", "Hero headline", "text", "#ffffff")
                     }
@@ -767,6 +785,7 @@ export function RetailLayout(props) {
                   </h1>
                   <p
                     className={`tpl-fade-up tpl-fade-up-delay-1 mt-5 text-lg text-white/85 ${ctx.editable()}`}
+                    style={textStyle(ctx.content, "pages.home.hero.subheadline", "#ffffff")}
                     onClick={() =>
                       ctx.handle(
                         "pages.home.hero.subheadline",
@@ -782,7 +801,7 @@ export function RetailLayout(props) {
                     <a
                       href="#menu"
                       className="inline-flex rounded-full px-7 py-3.5 text-sm font-semibold text-[#0b1220]"
-                      style={{ background: ctx.theme.primary }}
+                      style={{ background: ctx.theme.primary, ...textStyle(ctx.content, "pages.home.hero.cta", "#ffffff") }}
                       onClick={(e) => {
                         if (ctx.editMode) {
                           e.preventDefault();
@@ -824,12 +843,14 @@ export function RetailLayout(props) {
                 <Reveal>
                   <h1
                     className={`font-[family-name:var(--font-display)] text-4xl font-semibold md:text-6xl ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.title`, "#ffffff")}
                     onClick={() => ctx.handle(`${base}.title`, "About title", "text", "#ffffff")}
                   >
                     {page.title}
                   </h1>
                   <p
                     className={`mt-6 max-w-xl text-lg leading-8 text-white/75 ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.body`, "#ffffff")}
                     onClick={() => ctx.handle(`${base}.body`, "About text", "textarea", "#ffffff")}
                   >
                     {page.body}
@@ -885,6 +906,7 @@ export function ProcessLayout(props) {
                 </p>
                 <h1
                   className={`tpl-fade-up tpl-fade-up-delay-1 mt-5 max-w-3xl font-[family-name:var(--font-display)] text-5xl font-semibold tracking-tight md:text-6xl ${ctx.editable()}`}
+                  style={textStyle(ctx.content, "pages.home.hero.headline", "#ffffff")}
                   onClick={() =>
                     ctx.handle("pages.home.hero.headline", "Hero headline", "text", "#ffffff")
                   }
@@ -893,6 +915,7 @@ export function ProcessLayout(props) {
                 </h1>
                 <p
                   className={`tpl-fade-up tpl-fade-up-delay-2 mt-6 max-w-xl text-lg leading-8 text-slate-200 ${ctx.editable()}`}
+                  style={textStyle(ctx.content, "pages.home.hero.subheadline", "#ffffff")}
                   onClick={() =>
                     ctx.handle("pages.home.hero.subheadline", "Hero subheadline", "text", "#ffffff")
                   }
@@ -902,7 +925,7 @@ export function ProcessLayout(props) {
                 <a
                   href={ctx.contactHref}
                   className="tpl-fade-up tpl-fade-up-delay-3 mt-10 inline-flex w-fit rounded-full px-7 py-3.5 text-sm font-semibold text-white"
-                  style={{ background: ctx.theme.primary }}
+                  style={{ background: ctx.theme.primary, ...textStyle(ctx.content, "pages.home.hero.cta", "#ffffff") }}
                   onClick={(e) => {
                     if (ctx.editMode) {
                       e.preventDefault();
@@ -936,12 +959,14 @@ export function ProcessLayout(props) {
                   </p>
                   <h1
                     className={`mt-3 font-[family-name:var(--font-display)] text-4xl font-semibold ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.title`, "#ffffff")}
                     onClick={() => ctx.handle(`${base}.title`, "About title", "text", "#ffffff")}
                   >
                     {page.title}
                   </h1>
                   <p
                     className={`mt-6 text-lg leading-8 text-white/75 ${ctx.editable()}`}
+                    style={textStyle(ctx.content, `${base}.body`, "#ffffff")}
                     onClick={() => ctx.handle(`${base}.body`, "About text", "textarea", "#ffffff")}
                   >
                     {page.body}

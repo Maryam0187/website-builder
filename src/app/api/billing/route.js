@@ -9,6 +9,8 @@ import {
   billingPublicFields,
   buyExtraSiteSlot,
   cancelSubscription,
+  cancelStripeSubscription,
+  downgradeStripeSubscription,
   createBillingPortal,
   createStripeAddonCheckout,
   createStripeCheckout,
@@ -21,7 +23,6 @@ import {
 } from "@/lib/billing";
 import { isStripeConfigured } from "@/lib/stripe";
 import { countLiveSitesByOwner, countSitesByOwner } from "@/lib/store-actions";
-
 async function billingForUser(user) {
   const fresh = publicUser(await getUserById(user.id));
   const sitesUsed = user.role === "owner" ? await countSitesByOwner(user.id) : 0;
@@ -55,6 +56,19 @@ export async function POST(request) {
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || "").trim();
 
+  // Block Pakistan from Stripe operations
+  const stripeActions = ["subscribe", "checkout", "buy-site-slot", "buy-addon", "cancel-subscription", "downgrade"];
+  const buyingFreeWebsite =
+    action === "buy-site-slot" && String(body.slotPlanId || "").toLowerCase() === "free";
+  const userRegion = user.region || "usa";
+  const { regionAllowsStripe } = await import("@/lib/billing-regions");
+  if (stripeActions.includes(action) && !buyingFreeWebsite && !(await regionAllowsStripe(userRegion))) {
+    return NextResponse.json({
+      error: "Stripe payments not available in your region. Please contact us for payment options.",
+      region: userRegion,
+    }, { status: 400 });
+  }
+
   try {
     if (action === "start-trial") {
       return NextResponse.json(
@@ -69,9 +83,11 @@ export async function POST(request) {
       }
       const planId = String(body.planId || "starter").trim();
       const returnTo = body.returnTo;
+      const billingInterval = body.billingInterval === "yearly" ? "yearly" : "monthly";
+      const couponCode = String(body.couponCode || "").trim();
 
       if (isStripeConfigured()) {
-        const result = await createStripeCheckout(user.id, planId, { returnTo });
+        const result = await createStripeCheckout(user.id, planId, { returnTo, billingInterval, couponCode });
         if (result.url) {
           return NextResponse.json({
             checkoutUrl: result.url,
@@ -112,17 +128,28 @@ export async function POST(request) {
 
     if (action === "buy-site-slot") {
       if (user.role !== "owner") {
-        return NextResponse.json({ error: "Only owners can buy extra slots" }, { status: 403 });
-      }
-      if (!isStripeConfigured()) {
-        return NextResponse.json({ error: "Stripe is not configured" }, { status: 400 });
+        return NextResponse.json({ error: "Only owners can add a website" }, { status: 403 });
       }
       const slotPlanId = body.slotPlanId ? String(body.slotPlanId).trim() : null;
-      const result = await buyExtraSiteSlot(user.id, slotPlanId, { returnTo: body.returnTo });
+      const result = await buyExtraSiteSlot(user.id, slotPlanId, {
+        returnTo: body.returnTo,
+        billingInterval: body.billingInterval,
+      });
+      if (result.granted) {
+        const enriched = await billingForUser(user);
+        return NextResponse.json({
+          promptCreateSite: true,
+          slotPlanId: result.slotPlanId,
+          user: enriched.user,
+          billing: enriched.billing,
+          message: result.message,
+        });
+      }
       return NextResponse.json({
         checkoutUrl: result.url,
         sessionId: result.sessionId,
-        message: "Redirecting to Stripe to add your second website…",
+        slotPlanId: result.slotPlanId,
+        message: "Redirecting to pay for this website…",
       });
     }
 
@@ -170,11 +197,12 @@ export async function POST(request) {
         invoice: result.invoice || null,
         invoiceUrl: result.invoiceUrl || null,
         addonId: result.addonId || null,
+        slotPlanId: result.slotPlanId || null,
         kind: result.kind || null,
         returnTo: result.returnTo || null,
         promptCreateSite: Boolean(isSiteSlot && billing?.canCreateSite),
         message: isSiteSlot
-          ? "Payment confirmed — name your second website to finish setup."
+          ? "Payment confirmed — name your new website to get started."
           : result.kind === "addon" || result.kind === "payment"
             ? "Payment confirmed — website slots added."
             : "Payment confirmed — package activated.",
@@ -193,12 +221,47 @@ export async function POST(request) {
       if (user.role !== "owner") {
         return NextResponse.json({ error: "Only owners can cancel" }, { status: 403 });
       }
+      
+      // Use new cancelStripeSubscription for better messaging
+      if (isStripeConfigured() && user.stripeSubscriptionId) {
+        const result = await cancelStripeSubscription(user.id);
+        return NextResponse.json({
+          user: result.user,
+          billing: result.billing,
+          periodEnd: result.periodEnd,
+          invoices: await listInvoicesForUser(user.id),
+          message: result.message,
+        });
+      }
+      
+      // Fallback for non-Stripe
       const updated = await cancelSubscription(user.id);
       return NextResponse.json({
         user: updated,
         billing: billingPublicFields(updated),
         invoices: await listInvoicesForUser(user.id),
-        message: "Subscription will cancel at period end. You keep access until then.",
+        message: "Subscription canceled.",
+      });
+    }
+
+    if (action === "downgrade") {
+      if (user.role !== "owner") {
+        return NextResponse.json({ error: "Only owners can downgrade" }, { status: 403 });
+      }
+      const planId = String(body.planId || "").trim();
+      if (!planId) {
+        return NextResponse.json({ error: "planId required" }, { status: 400 });
+      }
+      
+      const result = await downgradeStripeSubscription(user.id, planId);
+      return NextResponse.json({
+        downgraded: result.downgraded,
+        user: result.user,
+        billing: result.billing,
+        invoice: result.invoice,
+        plan: result.plan,
+        invoices: await listInvoicesForUser(user.id),
+        message: result.message,
       });
     }
 

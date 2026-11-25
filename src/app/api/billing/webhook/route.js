@@ -4,6 +4,8 @@ import {
   applyAddonCheckoutSession,
   applyCheckoutSession,
   applyStripeSubscription,
+  startGracePeriod,
+  clearGracePeriod,
 } from "@/lib/billing";
 
 export const runtime = "nodejs";
@@ -54,6 +56,56 @@ export async function POST(request) {
         }
         break;
       }
+      case "setup_intent.succeeded": {
+        // SetupIntent succeeded - payment method is now available for future charges
+        // No action needed here, the payment method is automatically attached to the customer
+        console.log("SetupIntent succeeded:", event.data.object.id);
+        break;
+      }
+      case "payment_intent.succeeded": {
+        // PaymentIntent succeeded - one-time payment completed (e.g., extra site slot)
+        console.log("PaymentIntent succeeded:", event.data.object.id);
+        break;
+      }
+      case "payment_intent.payment_failed": {
+        // PaymentIntent failed - log for debugging
+        console.error("PaymentIntent failed:", event.data.object.id, event.data.object.last_payment_error);
+        
+        // If this is a subscription payment failure, start grace period
+        const paymentIntent = event.data.object;
+        if (paymentIntent.invoice && paymentIntent.metadata?.userId) {
+          const userId = Number(paymentIntent.metadata.userId);
+          if (userId) {
+            await startGracePeriod(userId);
+            console.log(`Started grace period for user ${userId}`);
+          }
+        }
+        break;
+      }
+      case "invoice.payment_succeeded": {
+        // Invoice paid successfully - clear any grace period
+        const invoice = event.data.object;
+        if (invoice.customer_email || invoice.metadata?.userId) {
+          const userId = invoice.metadata?.userId ? Number(invoice.metadata.userId) : null;
+          if (userId) {
+            await clearGracePeriod(userId);
+            console.log(`Cleared grace period for user ${userId}`);
+          }
+        }
+        break;
+      }
+      case "invoice.payment_failed": {
+        // Invoice payment failed - start grace period
+        const invoice = event.data.object;
+        if (invoice.customer_email || invoice.metadata?.userId) {
+          const userId = invoice.metadata?.userId ? Number(invoice.metadata.userId) : null;
+          if (userId) {
+            await startGracePeriod(userId);
+            console.log(`Started grace period for user ${userId} due to invoice payment failure`);
+          }
+        }
+        break;
+      }
       case "customer.subscription.created":
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
@@ -61,6 +113,7 @@ export async function POST(request) {
         break;
       }
       default:
+        console.log("Unhandled webhook event:", event.type);
         break;
     }
   } catch (err) {

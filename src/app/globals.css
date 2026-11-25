@@ -195,6 +195,60 @@ body {
   margin-top: 0;
 }
 
+@keyframes offer-banner-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(34, 211, 238, 0.28),
+      0 0 18px rgba(34, 211, 238, 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(165, 243, 252, 0.85),
+      0 0 42px rgba(34, 211, 238, 0.55);
+  }
+}
+
+@keyframes offer-banner-sweep {
+  0% {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  45%,
+  100% {
+    transform: translateX(280%) skewX(-18deg);
+  }
+}
+
+@keyframes offer-banner-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  80%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.offer-banner {
+  animation: offer-banner-glow 2.2s ease-in-out infinite;
+}
+
+.offer-banner-sweep {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 28%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  animation: offer-banner-sweep 2.6s ease-in-out infinite;
+}
+
+.offer-banner-ping {
+  animation: offer-banner-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
 
 [data-layout="folio"] .tpl-fade-up,
 [data-layout="marquee"] .tpl-fade-up,
@@ -216,6 +270,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .template-hero-zoom,
   .tpl-cta-glow,
+  .offer-banner,
+  .offer-banner-sweep,
+  .offer-banner-ping,
   .tpl-fade-up,
   .tpl-fade-up-delay-1,
   .tpl-fade-up-delay-2,

@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import MessageThread from "@/components/messaging/MessageThread";
 import MessageComposer from "@/components/messaging/MessageComposer";
 
-export default function SupportChatSidebar({ open, onClose }) {
+export default function SupportChatSidebar({ open, onClose, initialMessage, onInitialMessageSent }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const sentDraftId = useRef("");
+  const onSentRef = useRef(onInitialMessageSent);
+  onSentRef.current = onInitialMessageSent;
 
   const load = useCallback(async () => {
     if (!open) return;
@@ -53,6 +56,38 @@ export default function SupportChatSidebar({ open, onClose }) {
     if (!res.ok) throw new Error(json.error || "Failed to send");
     await load();
   }
+
+  useEffect(() => {
+    const draft = initialMessage;
+    const text = String(draft?.body || "").trim();
+    if (!open || !text || !draft?.id || !data?.conversation?.id) return;
+    if (sentDraftId.current === draft.id) return;
+    sentDraftId.current = draft.id;
+
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/conversations/${data.conversation.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: text, images: [] }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to send");
+        if (sentDraftId.current === draft.id) {
+          await load();
+          onSentRef.current?.(draft.onceKey);
+        }
+      } catch (err) {
+        if (sentDraftId.current === draft.id) sentDraftId.current = "";
+        if (!ignore) setError(err.message || "Could not send");
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [open, initialMessage, data?.conversation?.id, load]);
 
   if (!open) return null;
 

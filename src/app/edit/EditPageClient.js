@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import SiteTemplate from "@/components/template/SiteTemplate";
@@ -282,21 +282,7 @@ export default function EditPageClient() {
         <div className="border-b border-white/10 bg-[#040b1a]/95 px-4 py-3">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
             <BrandLogo href="/edit" subtitle="Owner editor" compact />
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/profile"
-                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
-              >
-                Profile
-              </Link>
-              <button
-                type="button"
-                onClick={logout}
-                className="rounded-full px-3 py-2 text-sm text-blue-100 hover:bg-white/5"
-              >
-                Log out
-              </button>
-            </div>
+            <AccountMenu email={user?.email} onLogout={logout} />
           </div>
         </div>
         <div className="flex min-h-[60vh] items-center justify-center px-4 text-center">
@@ -324,23 +310,36 @@ export default function EditPageClient() {
   return (
     <div className="relative min-h-screen bg-zinc-100">
       <div className="sticky top-0 z-40 shadow-sm">
-        <div className="border-b border-white/10 bg-[#040b1a] text-white">
+        <div className="relative z-10 border-b border-white/10 bg-[#040b1a] text-white">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <div>
-              <BrandLogo href="/edit" subtitle="Owner editor" compact />
-              <p className="mt-2 font-[family-name:var(--font-display)] text-lg font-semibold">
+            <BrandLogo href="/edit" subtitle="Owner editor" compact />
+            <div className="flex flex-wrap items-center gap-2">
+              {status && (
+                <span className="rounded-full bg-emerald-400/15 px-3 py-1.5 text-sm text-emerald-200">
+                  {status}
+                </span>
+              )}
+              <AccountMenu email={user?.email} onLogout={logout} />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-b border-zinc-200 bg-white px-4 py-3">
+          <div className="mx-auto flex max-w-6xl flex-col gap-3">
+            <div className="min-w-0">
+              <p className="font-[family-name:var(--font-display)] text-lg font-semibold text-zinc-900">
                 {site.content?.brand?.name || "Your site"}
                 {siteIsLive ? (
-                  <span className="ml-2 rounded-full bg-emerald-400/20 px-2 py-0.5 text-xs font-semibold text-emerald-200">
+                  <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
                     Live
                   </span>
                 ) : (
-                  <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-blue-100">
+                  <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-600">
                     Draft
                   </span>
                 )}
               </p>
-              <p className="text-xs text-blue-100">
+              <p className="text-xs text-zinc-500">
                 {user?.email ? `Signed in as ${user.email} · ` : ""}
                 Click any text, image, or color to edit. Text also has size and color.
               </p>
@@ -349,56 +348,30 @@ export default function EditPageClient() {
                   href={liveUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-1 block text-xs font-medium text-emerald-200 underline-offset-2 hover:underline"
+                  className="mt-1 block text-xs font-medium text-emerald-700 underline-offset-2 hover:underline"
                 >
                   {liveUrl.replace(/^https?:\/\//, "")}
                 </a>
               ) : null}
-              {sites.length > 1 ? (
-                <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-blue-100">
-                  <span className="font-semibold tracking-wide text-cyan-200/90 uppercase">
-                    Website
-                  </span>
-                  <select
-                    className="rounded-lg border border-white/20 bg-[#07122a] px-2 py-1.5 text-sm text-white outline-none ring-cyan-400/30 focus:ring-2"
-                    value={site.id}
-                    disabled={switchBusy}
-                    onChange={(e) => switchSite(e.target.value)}
-                  >
-                    {sites.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.content?.brand?.name || s.slug}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {status && (
-                <span className="rounded-full bg-emerald-400/15 px-3 py-1.5 text-sm text-emerald-200">
-                  {status}
-                </span>
-              )}
-              <Link
-                href="/profile#websites"
-                className="rounded-full border border-cyan-300/40 bg-cyan-400/15 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/25"
-              >
-                Profile
-              </Link>
-              <button
-                type="button"
-                onClick={logout}
-                className="rounded-full px-3 py-2 text-sm text-blue-100 hover:bg-white/5"
-              >
-                Log out
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-b border-zinc-200 bg-white px-4 py-2">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
+            {sites.length > 1 ? (
+              <label className="flex items-center gap-2 text-xs text-zinc-600">
+                <span className="font-semibold tracking-wide uppercase">Website</span>
+                <select
+                  className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none ring-cyan-400/30 focus:ring-2 disabled:opacity-60"
+                  value={site.id}
+                  disabled={switchBusy}
+                  onChange={(e) => switchSite(e.target.value)}
+                >
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.content?.brand?.name || s.slug}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="flex items-center gap-2 text-xs text-zinc-600">
               <span className="font-semibold tracking-wide uppercase">Template</span>
               <select
@@ -465,6 +438,7 @@ export default function EditPageClient() {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       <TemplateChangeDialog
@@ -482,7 +456,7 @@ export default function EditPageClient() {
         liveUrlHint={
           liveUrl
             ? liveUrl.replace(/^https?:\/\//, "")
-            : "*.technonaire.site"
+            : null
         }
         busy={liveBusy}
         onCancel={() => setGoLiveOpen(false)}
@@ -499,6 +473,66 @@ export default function EditPageClient() {
       />
 
       <EditPanel draft={draft} onClose={() => setDraft(null)} onSave={saveField} />
+    </div>
+  );
+}
+
+function AccountMenu({ email, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event) {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    }
+    function onKey(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        aria-label="Account menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white hover:bg-white/10"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <circle cx="12" cy="8" r="3.2" />
+          <path d="M5 19.2c1.4-3 3.8-4.5 7-4.5s5.6 1.5 7 4.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="absolute right-0 z-20 mt-2 w-48 overflow-hidden rounded-xl border border-white/10 bg-[#0b1222] py-1 shadow-xl">
+          {email ? <p className="truncate border-b border-white/10 px-3 py-2 text-xs text-blue-100/80">{email}</p> : null}
+          <Link
+            href="/profile"
+            onClick={() => setOpen(false)}
+            className="block px-3 py-2 text-sm text-white hover:bg-white/10"
+          >
+            Settings
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+            className="block w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10"
+          >
+            Log out
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

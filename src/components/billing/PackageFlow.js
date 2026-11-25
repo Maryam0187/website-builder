@@ -1,10 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import PlanChangeDialog from "@/components/billing/PlanChangeDialog";
+import AddPaymentMethodDialog from "@/components/billing/AddPaymentMethodDialog";
+import ProContactDialog from "@/components/billing/ProContactDialog";
+import RegionSelector from "@/components/RegionSelector";
+import { ALL_REGIONS } from "@/lib/region-detection";
+import {
+  formatPkr,
+  formatRegionAmount,
+  offerFits,
+  offerPhrase,
+  pickOffer,
+  savingsFor,
+  withRegionPricing,
+} from "@/lib/plan-price-label";
 
-function formatMoney(cents) {
+function formatMoney(cents, regionId = "usa") {
+  if (regionId === "pakistan") return formatPkr(cents);
   return `$${((Number(cents) || 0) / 100).toFixed(0)}`;
 }
 
@@ -21,18 +35,48 @@ function formatDate(value) {
   }
 }
 
+const SITE_HOST_ROOT = process.env.NEXT_PUBLIC_SITE_HOST_ROOT || "technonairebuilder.com";
+
+function amountForOffer(offer, interval) {
+  if (!offer) return null;
+  if (interval === "yearly" && offer.yearlyValueAmount != null && offer.yearlyValueAmount !== "") {
+    return { ...offer, valueAmount: Number(offer.yearlyValueAmount) };
+  }
+  return offer;
+}
+
+function launchOfferFor(offers, planId, interval, cents) {
+  const fitting = (offers || [])
+    .map((offer) => amountForOffer(offer, interval))
+    .filter((offer) => offerFits(offer, planId, interval));
+  const specific = fitting.filter((offer) => offer.billingInterval === interval);
+  const pool = specific.length ? specific : fitting;
+  return pool.reduce((best, offer) => {
+    if (!best) return offer;
+    return savingsFor(cents, offer) > savingsFor(cents, best) ? offer : best;
+  }, null);
+}
+
+function bannerOfferFor(offers, interval) {
+  const fitting = (offers || [])
+    .map((offer) => amountForOffer(offer, interval))
+    .filter((offer) => offer?.valueType && (!offer.billingInterval || offer.billingInterval === interval));
+  const specific = fitting.filter((offer) => offer.billingInterval === interval);
+  return specific[0] || fitting[0] || null;
+}
+
 function featureList(features) {
   const address =
     features?.technonaireAddress === "random"
-      ? "random.technonaire.site"
+      ? "Random Technonaire address"
       : features?.technonaireAddress === "chosen"
-        ? "Chosen Technonaire address"
+        ? `Choose your .${SITE_HOST_ROOT} address`
         : null;
   return [
     features?.live ? "Publishing" : null,
     features?.hosting ? "Hosting + SSL" : null,
     address,
-    features?.domain ? "Custom domain" : null,
+    features?.domain ? "Your own domain (DNS setup)" : null,
     features?.pwa ? "PWA app" : null,
     features?.premiumTemplates ? "All templates" : null,
     features?.templateSwitch ? "Editor · switch templates" : null,
@@ -66,11 +110,17 @@ function AddonCard({ item, badge, actionLabel, actionHref, onAction, busy, disab
     >
       <p className="text-xs uppercase tracking-wide text-blue-200/70">{badge}</p>
       <h4 className="mt-2 text-lg font-semibold text-white">{item.name}</h4>
+      {item.compareAtLabel ? (
+        <p className="mt-1 text-sm text-blue-200/60 line-through">{item.compareAtLabel}</p>
+      ) : null}
       <p className="mt-1 text-2xl font-semibold text-cyan-200">{item.priceLabel}</p>
-      {item.additionalPriceLabel && item.additionalPriceLabel !== "—" ? (
-        <p className="mt-1 text-xs text-blue-200/80">
-          Additional website · {item.additionalPriceLabel}
+      {item.yearlyNote ? (
+        <p className="mt-2 inline-flex w-fit rounded-full bg-cyan-400 px-3 py-1 text-sm font-bold text-[#041018]">
+          {item.yearlyNote}
         </p>
+      ) : null}
+      {item.offerNote ? (
+        <p className="mt-1 text-xs font-medium text-cyan-200">{item.offerNote}</p>
       ) : null}
       <p className="mt-2 text-xs text-blue-100">{item.description}</p>
       <ul className="mt-4 flex-1 space-y-1.5 text-xs text-blue-100">
@@ -112,10 +162,84 @@ export default function PackageFlow({
   onAction,
   onContactUs,
   onCreateSiteRequest,
+  sites = [],
+  onRegionConfirmed,
+  region = "usa",
+  regionLocked = false,
+  regionSaved = false,
+  regionPrices = null,
+  regions = null,
   view = "all",
 }) {
+  const [draftRegion, setDraftRegion] = useState(region || "usa");
+  const [confirmedRegion, setConfirmedRegion] = useState(
+    regionLocked || regionSaved ? region || "usa" : "",
+  );
+  const [regionBusy, setRegionBusy] = useState(false);
+  const [regionNotice, setRegionNotice] = useState("");
   const [showSlotPicker, setShowSlotPicker] = useState(false);
   const [planChangePrompt, setPlanChangePrompt] = useState(null);
+  const [showAddPaymentDialog, setShowAddPaymentDialog] = useState(false);
+  const [showProContactDialog, setShowProContactDialog] = useState(false);
+  const [pendingPurchase, setPendingPurchase] = useState(null);
+  const [billingInterval, setBillingInterval] = useState("yearly");
+  const [launchOffers, setLaunchOffers] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/pricing/launch-promotion")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setLaunchOffers(data.offers || (data.offer ? [data.offer] : []));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setDraftRegion(region || "usa");
+  }, [region]);
+
+  useEffect(() => {
+    if (regionLocked || regionSaved) setConfirmedRegion(region || "usa");
+  }, [region, regionLocked, regionSaved]);
+
+  const regionConfirmed = regionLocked || (confirmedRegion !== "" && confirmedRegion === draftRegion);
+
+  function requireConfirmedRegion() {
+    if (regionLocked || regionConfirmed) return true;
+    setRegionNotice("Confirm your region above before choosing a plan.");
+    document.getElementById("plan-region")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return false;
+  }
+
+  async function confirmRegion() {
+    setRegionBusy(true);
+    setRegionNotice("");
+    try {
+      const res = await fetch("/api/region/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ region: draftRegion }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not save region");
+      setConfirmedRegion(draftRegion);
+      onRegionConfirmed?.(draftRegion);
+      setRegionNotice(
+        draftRegion === "pakistan"
+          ? "Pakistan confirmed. Choose a plan to request activation."
+          : "Region confirmed. Choose a plan below."
+      );
+    } catch (err) {
+      setRegionNotice(err.message || "Could not save region");
+    } finally {
+      setRegionBusy(false);
+    }
+  }
+
   const subStatus = billing?.subscriptionStatus || "none";
   const paidActive = Boolean(billing?.subscriptionActive);
   const allPlans = billing?.plans || [];
@@ -132,15 +256,61 @@ export default function PackageFlow({
   const currentPlanId = paidActive
     ? normalizeCurrentPlanId(billing?.planId)
     : "free";
+  const hasFreeWebsite = (sites || []).some((item) => {
+    const raw = String(item.planId || "free").toLowerCase();
+    const sitePlanId = raw === "live" ? "custom" : raw;
+    const oldest = (sites || []).reduce((current, candidate) => {
+      if (!current) return candidate;
+      const currentTime = new Date(current.createdAt || 0).getTime();
+      const candidateTime = new Date(candidate.createdAt || 0).getTime();
+      if (candidateTime < currentTime) return candidate;
+      if (candidateTime === currentTime && candidate.id < current.id) return candidate;
+      return current;
+    }, null);
+    const inheritsAccount = (!sitePlanId || sitePlanId === "free") && oldest?.id === item.id;
+    if (inheritsAccount) return currentPlanId === "free";
+    return !sitePlanId || sitePlanId === "free";
+  });
 
   const currentPlan =
     allPlans.find((p) => p.id === currentPlanId) || allPlans.find((p) => p.id === "free");
   const currentRank = planRank(currentPlan);
   const monthlyPlanIds = new Set(["starter", "custom", "domain", "pro"]);
-  const shopPackages =
+  const purchaseExtra = {
+    billingInterval,
+    couponCode: "",
+  };
+  const bannerOffer = bannerOfferFor(launchOffers, billingInterval);
+  const shopPackages = (
     billing?.shopPackages?.length > 0
       ? billing.shopPackages
-      : allPlans.filter((p) => p.id === "free" || monthlyPlanIds.has(p.id));
+      : allPlans.filter((p) => p.id === "free" || monthlyPlanIds.has(p.id))
+  ).map((plan) => {
+    const priced = withRegionPricing(plan, draftRegion, regionPrices, billingInterval);
+    if (!priced || priced.priceLabel === "Contact us" || !(Number(priced.priceCents) > 0)) return priced;
+    const offer = pickOffer(
+      launchOfferFor(launchOffers, priced.id, billingInterval, priced.priceCents),
+      null,
+      priced.id,
+      billingInterval,
+      priced.priceCents,
+    );
+    const saved = savingsFor(priced.priceCents, offer);
+    if (!offer || saved <= 0) return priced;
+    const finalCents = Math.max(0, priced.priceCents - saved);
+    const period = billingInterval === "yearly" ? "year" : "month";
+    return {
+      ...priced,
+      compareAtLabel: priced.priceLabel,
+      priceCents: finalCents,
+      priceLabel: formatRegionAmount(finalCents, priced.currency || "USD", {
+        per: finalCents > 0 ? period : null,
+      }),
+      offerNote: offerPhrase(offer),
+    };
+  });
+  const pricedCurrentPlan = withRegionPricing(currentPlan, draftRegion, regionPrices);
+  const pakistanPricing = draftRegion === "pakistan";
   const planRankById = { starter: 1, custom: 2, live: 2, domain: 3, pro: 4 };
 
   const statusLabel = canceling ? "Cancels soon" : paidActive ? "Active" : "Free";
@@ -150,6 +320,54 @@ export default function PackageFlow({
     <div className="space-y-6">
       {showPlan ? (
         <>
+          <div className="grid gap-4 lg:grid-cols-2">
+          <div id="plan-region" className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-5">
+            <p className="text-xs uppercase tracking-wide text-blue-200/70">Step 1</p>
+            <h3 className="mt-1 text-lg font-semibold text-white">
+              {regionConfirmed ? "Your region" : "Confirm your region"}
+            </h3>
+            <p className="mt-1 text-sm text-blue-100">
+              {regionLocked
+                ? "Pricing stays on this region."
+                : regionConfirmed
+                  ? "Saved. Pricing uses this region until you change it."
+                  : "Payment and pricing use this region. Confirm it once, then choose a package."}
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {regionLocked ? (
+                <p className="rounded-lg border border-white/15 bg-white px-4 py-2 text-sm font-medium text-gray-900">
+                  {(regions?.length ? regions : ALL_REGIONS).find((item) => item.id === draftRegion)?.name || draftRegion}
+                </p>
+              ) : (
+                <RegionSelector
+                  selectedRegion={draftRegion}
+                  regions={regions}
+                  onRegionChange={(nextRegion) => {
+                    setDraftRegion(nextRegion);
+                    setRegionNotice("");
+                  }}
+                />
+              )}
+              {regionLocked ? (
+                <p className="text-sm text-blue-200/80">Locked after your first subscription.</p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={regionBusy || regionConfirmed}
+                  onClick={confirmRegion}
+                  className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
+                >
+                  {regionBusy ? "Saving…" : regionConfirmed ? "Region confirmed" : "Confirm region"}
+                </button>
+              )}
+            </div>
+            {regionNotice ? (
+              <p className={`mt-3 text-sm ${regionConfirmed ? "text-cyan-100" : "text-amber-200"}`}>
+                {regionNotice}
+              </p>
+            ) : null}
+          </div>
+
           <div
             className={`rounded-2xl border p-5 ${
               paidActive
@@ -169,8 +387,10 @@ export default function PackageFlow({
                   {canceling
                     ? `Keeps working until ${formatDate(billing?.currentPeriodEnd)}, then Free.`
                     : paidActive
-                      ? `${billing?.priceLabel || ""} · Next period ${formatDate(billing?.currentPeriodEnd)}`
-                      : "Default package · $0 · 1 website · all templates · switch anytime. Cart & checkout is an add-on — contact us."}
+                      ? `${pricedCurrentPlan?.priceLabel || billing?.priceLabel || ""} · Next period ${formatDate(billing?.currentPeriodEnd)}`
+                      : pakistanPricing
+                        ? "Default package · Rs 0 · 1 website · all templates · switch anytime. Cart & checkout is an add-on — contact us."
+                        : "Default package · $0 · 1 website · all templates · switch anytime. Cart & checkout is an add-on — contact us."}
                 </p>
                 <p className="mt-2 text-xs text-blue-200/80">
                   Includes: {featureList(billing?.features).join(" · ") || "Free editor"}
@@ -201,23 +421,88 @@ export default function PackageFlow({
               </span>
             </div>
           </div>
+          </div>
 
           {showPlan && message && !showBilling ? (
             <p className="text-sm text-cyan-200">{message}</p>
           ) : null}
 
-          <div className="space-y-3">
-            <div>
+          <div>
+            <div className="max-w-xl">
               <h3 className="text-lg font-semibold text-white">Packages</h3>
-              <p className="mt-1 text-sm text-blue-100">
-                Everyone starts on Free. Subscribe to Starter ($9), Custom ($19), Domain ($29), or
-                Pro + PWA ($39) to publish and host. Already subscribed? Upgrade charges only the
-                difference on your saved card. Downgrade switches plans with no charge now — the
-                lower price starts next month. Add a 2nd website on any plan — Free $5/mo, Starter
-                $7/mo, Custom $15/mo, Domain $24/mo, Pro $34/mo.
+              <p className="mt-1 text-sm leading-6 text-blue-100/75">
+                {pakistanPricing
+                  ? "Everyone starts on Free. Prices are in PKR and Pakistan plans are activated with local payment. Pro + PWA is contact us."
+                  : "Everyone starts on Free. Prices are on each plan below. Pro + PWA is contact us."}
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="mt-5 flex flex-col items-center">
+              <div
+                role="group"
+                aria-label="Billing period"
+                className="inline-flex h-10 items-center rounded-full border border-white/10 bg-[#040b1a] p-1"
+              >
+                <button
+                  type="button"
+                  onClick={() => setBillingInterval("monthly")}
+                  className={`h-8 rounded-full px-4 text-sm font-semibold leading-none ${
+                    billingInterval === "monthly" ? "bg-white text-[#041018]" : "text-blue-100 hover:text-white"
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingInterval("yearly")}
+                  className={`inline-flex h-8 items-center gap-2 rounded-full px-4 text-sm font-semibold leading-none ${
+                    billingInterval === "yearly" ? "bg-white text-[#041018]" : "text-blue-100 hover:text-white"
+                  }`}
+                >
+                  Yearly
+                  <span
+                    className={`text-[10px] font-bold leading-none tracking-wide whitespace-nowrap ${
+                      billingInterval === "yearly" ? "text-cyan-700" : "text-cyan-300"
+                    }`}
+                  >
+                    2 months free
+                  </span>
+                </button>
+              </div>
+              <p className="mt-2 h-4 text-xs leading-4 text-cyan-200/80">
+                {billingInterval === "yearly" ? "Pay for 10 months and get the full year." : ""}
+              </p>
+            </div>
+            {bannerOffer?.valueType ? (
+              <div className="offer-banner relative mx-auto mt-4 max-w-3xl overflow-hidden rounded-2xl border border-cyan-300/40 bg-gradient-to-r from-cyan-500/25 via-[#0c3a5a] to-blue-600/25 px-5 py-4 text-center">
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    backgroundImage:
+                      "radial-gradient(ellipse 60% 80% at 50% 0%, rgba(34,211,238,0.28), transparent 70%)",
+                  }}
+                />
+                <div className="offer-banner-sweep pointer-events-none" />
+                <div className="relative">
+                  <p className="inline-flex items-center justify-center gap-2 text-[11px] font-bold tracking-[0.16em] text-cyan-200 uppercase">
+                    <span className="relative flex h-2 w-2">
+                      <span className="offer-banner-ping absolute inline-flex h-full w-full rounded-full bg-cyan-200" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
+                    </span>
+                    Special offer
+                  </p>
+                  <p className="mt-1 font-[family-name:var(--font-display)] text-xl font-semibold text-white">
+                    {offerPhrase(bannerOffer)}
+                  </p>
+                  <p className="mt-1 text-sm text-cyan-100/80">
+                    One time per customer
+                    {bannerOffer.daysRemaining != null
+                      ? ` · Ends in ${bannerOffer.daysRemaining} day${bannerOffer.daysRemaining === 1 ? "" : "s"}`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {shopPackages.map((item) => {
                 if (item.id === "free" || item.billingType === "included") {
                   const onFree = !paidActive;
@@ -231,12 +516,29 @@ export default function PackageFlow({
                     />
                   );
                 }
+                
+                // Pro plan is contact-only
+                if (item.id === "pro" || item.contactOnly) {
+                  return (
+                    <AddonCard
+                      key={item.id}
+                      item={item}
+                      badge="Enterprise"
+                      current={false}
+                      actionLabel="Contact us"
+                      busy={busy}
+                      disabled={false}
+                      onAction={() => setShowProContactDialog(true)}
+                    />
+                  );
+                }
+                
                 const isCurrent = paidActive && currentPlanId === item.id;
                 const itemRank = planRankById[item.id] || 0;
                 const isUpgrade = paidActive && itemRank > currentRank;
                 const isDowngrade = paidActive && itemRank < currentRank;
                 const liveQty = Math.max(1, Number(billing?.liveSites) || 1);
-                const currentCents = Number(currentPlan?.priceCents) || 0;
+                const currentCents = Number(pricedCurrentPlan?.priceCents) || 0;
                 const itemCents = Number(item.priceCents) || 0;
                 const differenceCents = Math.max(0, (itemCents - currentCents) * liveQty);
                 let actionLabel = null;
@@ -244,7 +546,7 @@ export default function PackageFlow({
                   if (isCurrent && canceling) {
                     actionLabel = "Keep this plan";
                   } else if (isUpgrade) {
-                    actionLabel = `Upgrade · +${formatMoney(differenceCents)} now`;
+                    actionLabel = `Upgrade · +${formatMoney(differenceCents, draftRegion)} now`;
                   } else if (!isCurrent && !canceling) {
                     actionLabel = isDowngrade
                       ? `Switch · ${item.priceLabel}`
@@ -255,12 +557,13 @@ export default function PackageFlow({
                   <AddonCard
                     key={item.id}
                     item={item}
-                    badge={isUpgrade ? "Upgrade" : isDowngrade ? "Downgrade" : "Monthly"}
+                    badge={isUpgrade ? "Upgrade" : isDowngrade ? "Downgrade" : billingInterval === "yearly" ? "Yearly" : "Monthly"}
                     current={isCurrent && !canceling}
                     actionLabel={actionLabel}
                     busy={busy}
                     disabled={!stripe}
                     onAction={() => {
+                      if (!requireConfirmedRegion()) return;
                       if (isCurrent && canceling) {
                         setPlanChangePrompt({
                           planId: item.id,
@@ -274,17 +577,8 @@ export default function PackageFlow({
                       if (isUpgrade) {
                         const card = billing?.cardOnFile;
                         const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
-                        if (!hasCard) {
-                          setPlanChangePrompt({
-                            planId: item.id,
-                            mode: "upgrade-need-card",
-                            title: `Upgrade to ${item.name}?`,
-                            description: `To charge the ${formatMoney(differenceCents)} difference without Checkout, add a card first. You can update your payment method in Stripe, then come back and upgrade.`,
-                            confirmLabel: "Add or change card",
-                            requireChargeConfirm: false,
-                            cardLabel: null,
-                            changeCardOnly: true,
-                          });
+                        if (!hasCard || billingInterval === "yearly") {
+                          onAction(billingInterval === "yearly" && hasCard ? "subscribe" : "checkout", item.id, purchaseExtra);
                           return;
                         }
                         setPlanChangePrompt({
@@ -292,11 +586,11 @@ export default function PackageFlow({
                           mode: "upgrade",
                           title: `Upgrade to ${item.name}?`,
                           description: canceling
-                            ? `We’ll stop the cancellation. Confirm to charge ${formatMoney(differenceCents)} now on your saved card (the difference). Starting next month you’ll be billed ${item.priceLabel} (additional sites ${item.additionalPriceLabel || "discounted"}).`
-                            : `Confirm to charge ${formatMoney(differenceCents)} now on your saved card (the difference). Starting next month you’ll be billed ${item.priceLabel} (additional sites ${item.additionalPriceLabel || "discounted"}).`,
-                          confirmLabel: `Charge ${formatMoney(differenceCents)} & upgrade`,
+                            ? `We’ll stop the cancellation. Confirm to charge ${formatMoney(differenceCents, draftRegion)} now on your saved card (the difference). Starting next month you’ll be billed ${item.priceLabel}.`
+                            : `Confirm to charge ${formatMoney(differenceCents, draftRegion)} now on your saved card (the difference). Starting next month you’ll be billed ${item.priceLabel}.`,
+                          confirmLabel: `Charge ${formatMoney(differenceCents, draftRegion)} & upgrade`,
                           requireChargeConfirm: true,
-                          chargeConfirmLabel: `I confirm charging ${formatMoney(differenceCents)} to ${card.label}`,
+                          chargeConfirmLabel: `I confirm charging ${formatMoney(differenceCents, draftRegion)} to ${card.label}`,
                           cardLabel: card.label,
                           changeCardOnly: false,
                         });
@@ -306,12 +600,30 @@ export default function PackageFlow({
                         setPlanChangePrompt({
                           planId: item.id,
                           title: `Switch to ${item.name}?`,
-                          description: `No charge now. Your plan switches to ${item.name} and starting next month you’ll be billed ${item.priceLabel} (additional sites ${item.additionalPriceLabel || "discounted"}).`,
+                          description: `No charge now. Your plan switches to ${item.name} and starting next month you’ll be billed ${item.priceLabel}.`,
                           confirmLabel: `Switch to ${item.name}`,
                         });
                         return;
                       }
-                      onAction("subscribe", item.id);
+                      // For initial subscribe, check if user has card
+                      const card = billing?.cardOnFile;
+                      const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
+                      if (!hasCard) {
+                        onAction("checkout", item.id, purchaseExtra);
+                        return;
+                      }
+                      const periodWord = billingInterval === "yearly" ? "yearly" : "monthly";
+                      setPlanChangePrompt({
+                        planId: item.id,
+                        mode: "subscribe",
+                        title: `Subscribe to ${item.name}?`,
+                        description: `Confirm to charge ${item.priceLabel} now on your saved card. You'll be billed ${periodWord}.`,
+                        confirmLabel: `Subscribe · ${item.priceLabel}`,
+                        requireChargeConfirm: true,
+                        chargeConfirmLabel: `I confirm charging ${item.priceLabel} to ${card.label}`,
+                        cardLabel: card.label,
+                        changeCardOnly: false,
+                      });
                     }}
                   />
                 );
@@ -321,9 +633,9 @@ export default function PackageFlow({
 
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-semibold text-white">Additional websites</h3>
+              <h3 className="text-lg font-semibold text-white">Add a website</h3>
               <p className="mt-1 text-sm text-blue-100">
-                Each plan includes 1 website. You can add a second website on any plan.
+                Each website has its own plan, at that plan&apos;s full price. Only one website can be on Free. If your websites are on Starter or another plan, you can add one Free website.
               </p>
             </div>
 
@@ -335,13 +647,13 @@ export default function PackageFlow({
                 onClick={() => onCreateSiteRequest?.()}
                 className="rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
               >
-                Create your extra website
+                Create your website
               </button>
-            ) : sitesUsed != null && sitesUsed >= siteSlots && siteSlots >= 2 ? (
+            ) : sitesUsed != null && sitesUsed >= siteSlots && siteSlots >= (billing?.maxWebsiteSlots || 10) ? (
               <p className="text-sm text-emerald-200">
-                Extra website already created ({sitesUsed} of {siteSlots}).
+                Website limit reached ({sitesUsed} of {siteSlots}).
               </p>
-            ) : stripe ? (
+            ) : (
               <div className="space-y-4">
                 {/* Step 1 — trigger button */}
                 {!showSlotPicker ? (
@@ -351,16 +663,16 @@ export default function PackageFlow({
                     onClick={() => setShowSlotPicker(true)}
                     className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-5 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/25 disabled:opacity-60"
                   >
-                    + Add second website
+                    + Add a website
                   </button>
                 ) : (
                   /* Step 2 — inline plan picker */
                   <div className="rounded-2xl border border-white/10 bg-[#07122a]/80 p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-semibold text-white">Choose a plan for your second website</p>
+                        <p className="font-semibold text-white">Choose a plan for this website</p>
                         <p className="mt-0.5 text-xs text-blue-200/70">
-                          Each site can have its own plan. You&apos;ll be charged via Stripe.
+                          Same plan or a different plan. Free can be used for one website only.
                         </p>
                       </div>
                       <button
@@ -373,12 +685,11 @@ export default function PackageFlow({
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {[
-                        { id: "free",    name: "Free",      price: "$5/mo",  hint: "Draft only · no hosting" },
-                        { id: "starter", name: "Starter",   price: "$7/mo",  hint: "Live · auto Technonaire address" },
-                        { id: "custom",  name: "Custom",    price: "$15/mo", hint: "Live · chosen Technonaire address" },
-                        { id: "domain",  name: "Domain",    price: "$24/mo", hint: "Live · your own domain" },
-                        { id: "pro",     name: "Pro + PWA", price: "$34/mo", hint: "Live · domain + installable PWA" },
-                      ].map((slot) => {
+                        { id: "free",    name: "Free",      price: shopPackages.find((plan) => plan.id === "free")?.priceLabel || "$0",  hint: "One Free website · draft only" },
+                        { id: "starter", name: "Starter",   price: shopPackages.find((plan) => plan.id === "starter")?.priceLabel || "$9/month",  hint: "Live · auto Technonaire address" },
+                        { id: "custom",  name: "Custom",    price: shopPackages.find((plan) => plan.id === "custom")?.priceLabel || "$19/month", hint: "Live · chosen Technonaire address" },
+                        { id: "domain",  name: "Domain",    price: shopPackages.find((plan) => plan.id === "domain")?.priceLabel || "$29/month", hint: "Live · use your own domain" },
+                      ].filter((slot) => slot.id !== "free" || !hasFreeWebsite).map((slot) => {
                         const isCurrent = currentPlanId === slot.id;
                         return (
                           <button
@@ -386,13 +697,29 @@ export default function PackageFlow({
                             type="button"
                             disabled={busy}
                             onClick={() => {
+                              if (!requireConfirmedRegion()) return;
                               setShowSlotPicker(false);
+                              const card = billing?.cardOnFile;
+                              const hasCard = Boolean(billing?.hasCardOnFile && card?.label);
+                              
+                              const paid = slot.id !== "free";
+                              if (paid && !hasCard) {
+                                onAction("buy-site-slot", slot.id, { billingInterval });
+                                return;
+                              }
                               setPlanChangePrompt({
                                 mode: "buy-slot",
                                 slotPlanId: slot.id,
-                                title: `Add a second website on ${slot.name}?`,
-                                description: `You’ll pay ${slot.price} via Stripe for one extra website slot (${slot.hint}). After payment you can name and create the new site.`,
-                                confirmLabel: `Continue to pay · ${slot.price}`,
+                                slotName: slot.name,
+                                title: `Add a ${slot.name} website?`,
+                                description: paid
+                                  ? `This website is billed at ${slot.price}, the full ${slot.name} price. You can add more websites on ${slot.name} or on a different plan.`
+                                  : "This is your one website on Free. It stays a draft until you choose a paid plan for it.",
+                                confirmLabel: paid ? `Charge ${slot.price} & add website` : "Add website",
+                                requireChargeConfirm: paid,
+                                chargeConfirmLabel: paid ? `I confirm charging ${slot.price} to ${card.label}` : "",
+                                cardLabel: card?.label || null,
+                                changeCardOnly: false,
                               });
                             }}
                             className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition disabled:opacity-60 ${
@@ -406,7 +733,7 @@ export default function PackageFlow({
                                 {slot.name}
                                 {isCurrent ? (
                                   <span className="ml-1.5 text-[10px] font-bold text-cyan-300 uppercase">
-                                    your plan
+                                    same plan
                                   </span>
                                 ) : null}
                               </span>
@@ -420,7 +747,7 @@ export default function PackageFlow({
                   </div>
                 )}
               </div>
-            ) : null}
+            )}
 
             <div className="space-y-3">
               <div>
@@ -553,7 +880,7 @@ export default function PackageFlow({
       <PlanChangeDialog
         open={Boolean(planChangePrompt)}
         eyebrow={
-          planChangePrompt?.mode === "buy-slot" ? "Additional website" : "Plan"
+          planChangePrompt?.mode === "buy-slot" ? "Add another website" : "Plan"
         }
         title={planChangePrompt?.title || ""}
         description={planChangePrompt?.description || ""}
@@ -580,16 +907,55 @@ export default function PackageFlow({
             onAction("portal");
             return;
           }
+          if (!requireConfirmedRegion()) return;
           if (planChangePrompt?.mode === "buy-slot") {
             const slotPlanId = planChangePrompt.slotPlanId;
             setPlanChangePrompt(null);
-            if (slotPlanId) onAction("buy-site-slot", slotPlanId);
+            if (slotPlanId) onAction("buy-site-slot-onsite", slotPlanId, { billingInterval });
             return;
           }
           const planId = planChangePrompt?.planId;
           setPlanChangePrompt(null);
-          if (planId) onAction("subscribe", planId);
+          if (planId) onAction("subscribe", planId, purchaseExtra);
         }}
+      />
+
+      <AddPaymentMethodDialog
+        open={showAddPaymentDialog}
+        title="Add payment method"
+        description={
+          pendingPurchase?.planName
+            ? `Add a card to subscribe to ${pendingPurchase.planName} on-site.`
+            : pendingPurchase?.slotName
+              ? `Add a card to pay ${pendingPurchase.slotPrice} for this website.`
+              : "Add a card to complete your purchase on-site without redirecting to Stripe Checkout."
+        }
+        busy={busy}
+        onSuccess={() => {
+          setShowAddPaymentDialog(false);
+          if (!requireConfirmedRegion()) return;
+          // After card is added, automatically retry the purchase
+          if (pendingPurchase?.action === "subscribe") {
+            onAction("subscribe-onsite", pendingPurchase.planId, purchaseExtra);
+          } else if (pendingPurchase?.action === "buy-site-slot") {
+            onAction("buy-site-slot-onsite", pendingPurchase.slotPlanId);
+          }
+          setPendingPurchase(null);
+        }}
+        onCancel={() => {
+          if (!busy) {
+            setShowAddPaymentDialog(false);
+            setPendingPurchase(null);
+          }
+        }}
+        onError={(err) => {
+          console.error("Payment method error:", err);
+        }}
+      />
+
+      <ProContactDialog
+        open={showProContactDialog}
+        onClose={() => setShowProContactDialog(false)}
       />
     </div>
   );

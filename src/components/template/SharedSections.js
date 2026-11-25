@@ -70,11 +70,11 @@ export function ContactSection({
               <a
                 href={`mailto:${email}`}
                 className={`font-semibold underline underline-offset-4 ${editable()}`}
-                style={light ? { color: theme.primary } : undefined}
+                style={textStyle(content, `${base}.email`, light ? theme.primary : "#ffffff")}
                 onClick={(e) => {
                   if (editMode) {
                     e.preventDefault();
-                    handle(`${base}.email`, "Contact email", "text", light ? theme.text : "#ffffff");
+                    handle(`${base}.email`, "Contact email", "text", light ? theme.primary : "#ffffff");
                   }
                 }}
               >
@@ -84,6 +84,7 @@ export function ContactSection({
             {(page.address || editMode) && (
               <p
                 className={editable()}
+                style={textStyle(content, `${base}.address`, light ? theme.text : "#ffffff")}
                 onClick={() =>
                   handle(`${base}.address`, "Address", "text", light ? theme.text : "#ffffff")
                 }
@@ -94,6 +95,7 @@ export function ContactSection({
             {(page.hours || editMode) && (
               <p
                 className={editable()}
+                style={textStyle(content, `${base}.hours`, light ? theme.text : "#ffffff")}
                 onClick={() =>
                   handle(`${base}.hours`, "Hours", "text", light ? theme.text : "#ffffff")
                 }
@@ -140,7 +142,7 @@ export function ContactSection({
                   light ? "border-black/20" : "border-white/40 text-white"
                 }`}
                 onClick={() =>
-                  handle(`${base}.email`, "Contact email", "text", light ? theme.text : "#ffffff")
+                  handle(`${base}.email`, "Contact email", "text", light ? theme.primary : "#ffffff")
                 }
               >
                 Edit contact email

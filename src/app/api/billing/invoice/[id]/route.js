@@ -18,6 +18,7 @@ export async function GET(_request, { params }) {
   const owner = publicUser(await getUserById(invoice.userId));
   const addon = invoice.addonId ? getAddon(invoice.addonId) : null;
   const plan = getPlan(invoice.planId);
+  const slotPlan = invoice.slotPlanId ? getPlan(invoice.slotPlanId) : null;
 
   return NextResponse.json({
     invoice,
@@ -41,6 +42,14 @@ export async function GET(_request, { params }) {
           priceLabel: plan.priceLabel,
           highlights: plan.highlights,
         },
+    slotPlan: slotPlan
+      ? {
+          id: slotPlan.id,
+          name: slotPlan.name,
+          priceLabel: slotPlan.priceLabel,
+          additionalPriceLabel: slotPlan.additionalPriceLabel,
+        }
+      : null,
     stripeEnabled: isStripeConfigured(),
   });
 }

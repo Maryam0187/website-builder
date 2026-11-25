@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import PackageFlow from "@/components/billing/PackageFlow";
+import AdminTemplatesGallery from "@/components/admin/AdminTemplatesGallery";
 import SupportChatSidebar from "@/components/messaging/SupportChatSidebar";
 import GoLiveDialog from "@/components/site/GoLiveDialog";
 import RestoreVersionDialog from "@/components/site/RestoreVersionDialog";
 import VersionNameDialog from "@/components/site/VersionNameDialog";
 import DeleteVersionDialog from "@/components/site/DeleteVersionDialog";
 import SiteNameDialog from "@/components/site/SiteNameDialog";
+import SubdomainPicker from "@/components/site/SubdomainPicker";
+import CustomDomainSetup from "@/components/site/CustomDomainSetup";
 import BillingBusyOverlay from "@/components/billing/BillingBusyOverlay";
 import PaymentSuccessOverlay from "@/components/billing/PaymentSuccessOverlay";
+import SiteSwitcherGuide from "@/components/site/SiteSwitcherGuide";
 
 const MAX_SITE_VERSIONS = 5;
 
@@ -24,14 +28,14 @@ function normalizeSettingsHash(hash) {
     .map((p) => p.trim())
     .filter(Boolean)[0];
   const h = first ? `#${first}` : "";
-  if (!h || h === "#" || h === "#profile") return "#account";
+  if (!h || h === "#" || h === "#profile" || h === "#coupons") return "#account";
   if (h === "#password" || h === "#2fa") return "#security";
   return h;
 }
 
 function profileSectionFromReturn(value, fallback = "#plan") {
   const next = normalizeSettingsHash(`#${String(value || "").replace(/^#/, "")}`);
-  if (["#plan", "#billing", "#websites", "#account", "#security"].includes(next)) return next;
+  if (["#plan", "#billing", "#websites", "#templates", "#account", "#security"].includes(next)) return next;
   return normalizeSettingsHash(fallback);
 }
 
@@ -53,14 +57,18 @@ export default function ProfilePage() {
   const [site, setSite] = useState(null);
   const [sites, setSites] = useState([]);
   const [billing, setBilling] = useState(null);
+  const [regionPrices, setRegionPrices] = useState(null);
+  const [regions, setRegions] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [billingMsg, setBillingMsg] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(null);
+  const [newSitePlanId, setNewSitePlanId] = useState(null);
   const [activeHash, setActiveHash] = useState("#account");
   const [siteNames, setSiteNames] = useState({});
   const [siteNameBusy, setSiteNameBusy] = useState({});
   const [siteNameStatus, setSiteNameStatus] = useState({});
+  const [siteDeleteBusy, setSiteDeleteBusy] = useState(null);
   const [siteLiveBusy, setSiteLiveBusy] = useState({});
   const [siteLiveStatus, setSiteLiveStatus] = useState({});
   const [goLivePrompt, setGoLivePrompt] = useState(null);
@@ -83,12 +91,22 @@ export default function ProfilePage() {
   const [totpBusy, setTotpBusy] = useState(false);
   const [totpAskLife, setTotpAskLife] = useState("every");
   const [showChat, setShowChat] = useState(false);
+  const [chatDraft, setChatDraft] = useState(null);
+  const sentDomainHelp = useRef(new Set());
+  const [showSiteSwitcherGuide, setShowSiteSwitcherGuide] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkout = params.get("checkout");
     const sessionId = params.get("session_id");
     const fromParam = params.get("from");
+    const urlSlotPlanId = params.get("slotPlanId");
+
+    // Restore slotPlanId from URL parameter if present
+    if (urlSlotPlanId && !newSitePlanId) {
+      setNewSitePlanId(urlSlotPlanId);
+      setCreateSitePrompt(true);
+    }
 
     (async () => {
       const res = await fetch("/api/profile");
@@ -104,11 +122,30 @@ export default function ProfilePage() {
       setUser(data.user);
       setTotpAskLife(data.user.totpAskLife || "every");
       setSite(data.site || null);
-      setSites(data.sites || []);
+      const mappedSites = (data.sites || []).map((item) => ({
+        id: item.id,
+        slug: item.slug,
+        subdomain: item.subdomain || null,
+        customDomain: item.customDomain || null,
+        domainStatus: item.domainStatus || "none",
+        domainVerifiedAt: item.domainVerifiedAt || null,
+        cfValidationRecords: item.cfValidationRecords || null,
+        cfSslStatus: item.cfSslStatus || null,
+        liveUrl: item.liveUrl || null,
+        name: item.content?.brand?.name || item.name || item.slug,
+        status: item.status,
+        template: item.template || "other",
+        templateLabel: item.templateLabel || "Other",
+        planId: item.planId || "free",
+        createdAt: item.createdAt || null,
+      }));
+      setSites(mappedSites);
       setSiteNames(
-        Object.fromEntries((data.sites || []).map((item) => [item.id, item.name || ""])),
+        Object.fromEntries(mappedSites.map((item) => [item.id, item.name || ""])),
       );
       setBilling(data.billing || null);
+      if (data.regionPrices) setRegionPrices(data.regionPrices);
+      if (data.regions) setRegions(data.regions);
       setInvoices(data.invoices || []);
 
       if (checkout === "cancel") {
@@ -130,22 +167,26 @@ export default function ProfilePage() {
             if (syncData.user) setUser(syncData.user);
             if (syncData.billing) setBilling(syncData.billing);
             if (syncData.invoices) setInvoices(syncData.invoices);
+            if (syncData.slotPlanId) setNewSitePlanId(syncData.slotPlanId);
             const msg = syncData.message || "Payment confirmed — package activated.";
             setBillingMsg(msg);
+            const invoiceUrlWithPlan = syncData.slotPlanId && syncData.invoiceUrl
+              ? `${syncData.invoiceUrl}?ref=profile`
+              : syncData.invoiceUrl;
             if (syncData.promptCreateSite) {
               setCreateSitePrompt(true);
               setPaymentSuccess({
                 message: msg,
                 nextHash: "#plan",
                 continueLabel: "Continue",
-                invoiceUrl: syncData.invoiceUrl || null,
+                invoiceUrl: invoiceUrlWithPlan,
               });
             } else {
               setPaymentSuccess({
                 message: msg,
                 nextHash: "#billing",
                 continueLabel: "Continue to Billing",
-                invoiceUrl: syncData.invoiceUrl || null,
+                invoiceUrl: invoiceUrlWithPlan,
               });
             }
             window.history.replaceState(null, "", "/profile");
@@ -221,6 +262,39 @@ export default function ProfilePage() {
     }
   }
 
+  async function deleteAdditionalSite(item) {
+    const name = item.name || "this website";
+    const ok = window.confirm(
+      `Delete “${name}”?\n\nThis website and its pages will be removed.`,
+    );
+    if (!ok) return;
+    setSiteDeleteBusy(item.id);
+    try {
+      const res = await fetch(`/api/site?id=${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not delete website");
+      setSites((prev) => {
+        const next = prev.filter((siteItem) => siteItem.id !== item.id);
+        if (site?.id === item.id) {
+          const fallback = next[0];
+          setSite(
+            fallback
+              ? { id: fallback.id, slug: fallback.slug, name: fallback.name, status: fallback.status }
+              : null,
+          );
+        }
+        return next;
+      });
+    } catch (err) {
+      setSiteNameStatus((prev) => ({
+        ...prev,
+        [item.id]: err.message || "Could not delete website",
+      }));
+    } finally {
+      setSiteDeleteBusy(null);
+    }
+  }
+
   function applySitesFromResponse(data, siteId) {
     if (Array.isArray(data.sites)) {
       setSites((prev) =>
@@ -230,11 +304,15 @@ export default function ProfilePage() {
             id: s.id,
             slug: s.slug,
             subdomain: s.subdomain || null,
+            customDomain: s.customDomain || null,
+            domainStatus: s.domainStatus || "none",
+            domainVerifiedAt: s.domainVerifiedAt || null,
             liveUrl: s.liveUrl || null,
             name: s.content?.brand?.name || s.slug,
             status: s.status,
-            template: s.content?.template || existing?.template || "other",
-            templateLabel: existing?.templateLabel || "Other",
+            template: s.content?.template || s.template || existing?.template || "other",
+            templateLabel: s.templateLabel || existing?.templateLabel || "Other",
+            planId: s.planId || existing?.planId || "free",
           };
         }),
       );
@@ -246,8 +324,14 @@ export default function ProfilePage() {
                 ...item,
                 status: data.site.status,
                 subdomain: data.site.subdomain || item.subdomain || null,
+                customDomain: data.site.customDomain || item.customDomain || null,
+                domainStatus: data.site.domainStatus || item.domainStatus || "none",
+                domainVerifiedAt: data.site.domainVerifiedAt || item.domainVerifiedAt || null,
+                cfValidationRecords: data.site.cfValidationRecords || data.validationRecords || item.cfValidationRecords || null,
+                cfSslStatus: data.site.cfSslStatus || item.cfSslStatus || null,
                 liveUrl: data.liveUrl || item.liveUrl || null,
                 name: data.site.content?.brand?.name || item.name,
+                planId: data.site.planId || item.planId || "free",
               }
             : item,
         ),
@@ -261,8 +345,11 @@ export default function ProfilePage() {
               ...prev,
               status: data.site.status,
               subdomain: data.site.subdomain || prev.subdomain || null,
+              customDomain: data.site.customDomain || prev.customDomain || null,
+              domainStatus: data.site.domainStatus || prev.domainStatus || "none",
               liveUrl: data.liveUrl || prev.liveUrl || null,
               name: data.site.content?.brand?.name || prev.name,
+              planId: data.site.planId || prev.planId || "free",
             }
           : prev,
       );
@@ -281,7 +368,7 @@ export default function ProfilePage() {
         name: target?.name || "this website",
         liveUrlHint: target?.liveUrl
           ? String(target.liveUrl).replace(/^https?:\/\//, "")
-          : "*.technonaire.site",
+          : null,
       });
       return;
     }
@@ -551,15 +638,21 @@ export default function ProfilePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "create-site",
-            brandName: extra.brandName || "My second website",
+            brandName: extra.brandName || "My website",
+            planId: newSitePlanId || extra.planId || "free",
           }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not create website");
         setCreateSitePrompt(false);
+        setNewSitePlanId(null);
         if (data.user) setUser(data.user);
         if (Array.isArray(data.sites)) {
           applySitesFromResponse(data, data.site?.id);
+          // Show the site switcher guide if this is an additional website (not the first one)
+          if (data.sites.length > 1) {
+            setShowSiteSwitcherGuide(true);
+          }
         }
         if (data.site) {
           const nextName = data.site.content?.brand?.name || data.site.slug;
@@ -582,15 +675,118 @@ export default function ProfilePage() {
         return;
       }
 
+      // Handle on-site payment actions
+      if (action === "subscribe-onsite") {
+        const res = await fetch("/api/billing/charge-on-site", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "subscribe",
+            planId: id,
+            billingInterval: extra.billingInterval,
+            couponCode: extra.couponCode,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Subscription failed");
+        if (data.user) setUser(data.user);
+        if (data.billing) setBilling(data.billing);
+        if (data.invoices) setInvoices(data.invoices);
+        setBillingMsg(data.message || "Subscribed successfully!");
+        setPaymentSuccess({
+          message: data.message || "Subscribed successfully!",
+          nextHash: "#billing",
+          continueLabel: "Continue to Billing",
+          invoiceUrl: data.invoiceUrl || null,
+        });
+        setBillingBusy(false);
+        return;
+      }
+
+      if (action === "buy-site-slot-onsite") {
+        const res = await fetch("/api/billing/charge-on-site", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "buy-site-slot",
+            slotPlanId: id,
+            billingInterval: extra.billingInterval,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not add website");
+        if (data.user) setUser(data.user);
+        if (data.billing) setBilling(data.billing);
+        if (data.invoices) setInvoices(data.invoices);
+        if (data.slotPlanId) setNewSitePlanId(data.slotPlanId);
+        setBillingMsg(data.message || "Website added");
+        const invoiceUrlWithPlan = data.slotPlanId && data.invoiceUrl
+          ? `${data.invoiceUrl}?ref=profile`
+          : data.invoiceUrl;
+        if (data.promptCreateSite) {
+          setCreateSitePrompt(true);
+          setPaymentSuccess({
+            message: data.message || "Website added. Name it to create it.",
+            nextHash: "#plan",
+            continueLabel: "Continue",
+            invoiceUrl: invoiceUrlWithPlan,
+          });
+        } else {
+          setPaymentSuccess({
+            message: data.message || "Website added",
+            nextHash: "#billing",
+            continueLabel: "Continue to Billing",
+            invoiceUrl: invoiceUrlWithPlan,
+          });
+        }
+        setBillingBusy(false);
+        return;
+      }
+
+      // Handle checkout redirect to on-site checkout page
+      if (action === "checkout") {
+        const params = new URLSearchParams({
+          planId: id,
+          mode: "subscribe",
+        });
+        if (extra.billingInterval) params.set("interval", extra.billingInterval);
+        if (extra.couponCode) params.set("code", extra.couponCode);
+        window.location.href = `/checkout?${params.toString()}`;
+        return;
+      }
+
+      if (action === "buy-site-slot") {
+        const res = await fetch("/api/billing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "buy-site-slot",
+            slotPlanId: id,
+            billingInterval: extra.billingInterval,
+            returnTo: "plan",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not add website");
+        if (data.checkoutUrl) {
+          window.location.href = data.checkoutUrl;
+          return;
+        }
+        if (data.user) setUser(data.user);
+        if (data.billing) setBilling(data.billing);
+        if (data.slotPlanId) setNewSitePlanId(data.slotPlanId);
+        setBillingMsg(data.message || "Website added");
+        if (data.promptCreateSite) setCreateSitePrompt(true);
+        setBillingBusy(false);
+        return;
+      }
+
       const body = { action, ...extra };
-      if (action === "subscribe" || action === "checkout") body.planId = id;
+      if (action === "subscribe") body.planId = id;
       if (action === "buy-addon") body.addonId = id;
-      if (action === "buy-site-slot" && id) body.slotPlanId = id;
       if (
         action === "subscribe" ||
-        action === "checkout" ||
-        action === "buy-addon" ||
-        action === "buy-site-slot"
+        action === "buy-addon"
       ) {
         body.returnTo =
           String(extra.returnTo || window.location.hash || activeHash || "#plan")
@@ -675,78 +871,127 @@ export default function ProfilePage() {
         ? String(value).charAt(0).toUpperCase() + String(value).slice(1)
         : "Draft";
   const canGoLive = Boolean(billing?.canGoLive);
+  function websitePlanName(item) {
+    const catalog = billing?.plans || [];
+    const raw = String(item.planId || "free").toLowerCase();
+    const sitePlanId = raw === "live" ? "custom" : raw;
+    const oldest = sites.reduce((current, candidate) => {
+      if (!current) return candidate;
+      const currentTime = new Date(current.createdAt || 0).getTime();
+      const candidateTime = new Date(candidate.createdAt || 0).getTime();
+      if (candidateTime < currentTime) return candidate;
+      if (candidateTime === currentTime && candidate.id < current.id) return candidate;
+      return current;
+    }, null);
+    const inheritsAccount = (!sitePlanId || sitePlanId === "free") && oldest?.id === item.id;
+    const id = inheritsAccount
+      ? (billing?.subscriptionActive ? billing.planId || "free" : "free")
+      : sitePlanId || "free";
+    const plan = catalog.find((entry) => entry.id === id);
+    const name = plan?.name || (inheritsAccount ? billing?.planName : "") || "Free";
+    const price = inheritsAccount ? billing?.priceLabel : plan?.priceLabel;
+    if (!price || id === "free") return name;
+    return `${name} · ${price}`;
+  }
 
   const navItems = [
     { href: "#account", label: "Account" },
     ...(user.role === "owner" ? [{ href: "#websites", label: "Websites" }] : []),
+    { href: "#templates", label: "Templates" },
     { href: "#security", label: "Security" },
     { href: "#plan", label: "Plan" },
     ...(user.role === "owner" ? [{ href: "#billing", label: "Billing" }] : []),
   ];
 
   return (
-    <div className="min-h-screen bg-[#040b1a] text-white">
-      <header className="border-b border-white/10 bg-[#040b1a]/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <BrandLogo href={homeHref} subtitle="Settings" compact />
+    <div className="flex h-screen flex-col overflow-hidden bg-[#070b16] text-white lg:flex-row">
+      <aside className="flex shrink-0 flex-col border-b border-white/10 bg-[#0b1222] lg:h-full lg:w-56 lg:overflow-y-auto lg:border-b-0 lg:border-r">
+        <div className="flex items-center justify-between gap-3 px-4 py-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-white">{user.email}</p>
+            <p className="text-xs capitalize text-white/40">{user.role}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              href={homeHref}
-              className="rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white/90 transition hover:border-cyan-300/40 hover:bg-white/5"
-            >
+          <div className="flex shrink-0 items-center gap-1 lg:hidden">
+            <Link href={homeHref} className="rounded-md px-2 py-1 text-xs text-blue-100 hover:bg-white/5">
               {user.role === "admin" ? "Dashboard" : "Editor"}
             </Link>
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-full px-3 py-2 text-sm text-blue-100 transition hover:bg-white/5 hover:text-white"
-            >
+            <button type="button" onClick={logout} className="rounded-md px-2 py-1 text-xs text-blue-100 hover:bg-white/5">
               Log out
             </button>
           </div>
         </div>
-      </header>
 
-      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-8 lg:flex-row lg:items-start lg:gap-10 lg:py-10">
-        <aside className="lg:sticky lg:top-6 lg:w-56 lg:shrink-0">
-          <p className="mb-3 hidden text-xs font-semibold tracking-[0.16em] text-white/40 uppercase lg:block">
-            Settings
-          </p>
-          <nav
-            className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
-            aria-label="Settings"
+        <nav
+          className="flex gap-1 overflow-x-auto px-2 pb-3 lg:flex-1 lg:flex-col lg:overflow-y-auto lg:px-2 lg:pb-2"
+          aria-label="Settings"
+        >
+          {navItems.map((item) => {
+            const active = activeHash === item.href;
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                className={`relative whitespace-nowrap rounded-md px-3 py-2 text-sm transition ${
+                  active
+                    ? "bg-white/10 text-white before:absolute before:top-1.5 before:bottom-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-cyan-400"
+                    : "text-blue-100/70 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                {item.label}
+              </a>
+            );
+          })}
+          {user.role === "owner" ? (
+            <button
+              type="button"
+              onClick={() => setShowChat(true)}
+              className="whitespace-nowrap rounded-md px-3 py-2 text-left text-sm text-blue-100/70 transition hover:bg-white/5 hover:text-white"
+            >
+              Contact us
+            </button>
+          ) : null}
+        </nav>
+
+        <div className="mt-auto hidden border-t border-white/10 p-3 lg:block">
+          <Link
+            href={homeHref}
+            className="block rounded-md px-3 py-2 text-sm text-blue-100/80 hover:bg-white/5 hover:text-white"
           >
-            {navItems.map((item) => {
-              const active = activeHash === item.href;
-              return (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className={`whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                    active
-                      ? "bg-white/10 text-white"
-                      : "text-blue-100/80 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  {item.label}
-                </a>
-              );
-            })}
-            {user.role === "owner" ? (
+            {user.role === "admin" ? "Dashboard" : "Editor"}
+          </Link>
+          <button
+            type="button"
+            onClick={logout}
+            className="block w-full rounded-md px-3 py-2 text-left text-sm text-blue-100/80 hover:bg-white/5 hover:text-white"
+          >
+            Log out
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="shrink-0 border-b border-white/10 bg-[#040b1a]">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <BrandLogo href={homeHref} subtitle={user.role === "admin" ? "Admin" : "Settings"} compact />
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={homeHref}
+                className="rounded-full border border-cyan-300/40 bg-cyan-400/15 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/25"
+              >
+                {user.role === "admin" ? "Dashboard" : "Editor"}
+              </Link>
               <button
                 type="button"
-                onClick={() => setShowChat(true)}
-                className="whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium text-cyan-100/90 transition hover:bg-cyan-500/10 hover:text-cyan-50"
+                onClick={logout}
+                className="rounded-full px-3 py-2 text-sm text-blue-100 hover:bg-white/5"
               >
-                Contact us
+                Log out
               </button>
-            ) : null}
-          </nav>
-        </aside>
+            </div>
+          </div>
+        </header>
 
-        <main className="min-w-0 flex-1">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
           {activeHash === "#account" ? (
             <section id="account" className={panelClass}>
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-6">
@@ -768,14 +1013,14 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="mt-6 max-w-xl space-y-5">
-                <div>
+              <div className="mt-6 grid gap-5 lg:grid-cols-3">
+                <div className="lg:col-span-1">
                   <label className="mb-1.5 block text-sm font-medium text-blue-100">Email</label>
                   <input className={inputClass} value={user.email} disabled readOnly />
                   <p className="mt-1.5 text-xs text-white/40">Email can’t be changed here.</p>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-blue-100">Role</p>
                     <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm capitalize text-white">
@@ -801,7 +1046,7 @@ export default function ProfilePage() {
                     Websites
                   </h1>
                   <p className="mt-1 text-sm text-blue-100/80">
-                    Manage your websites, names, publishing, live address, and version history.
+                    Each website has its own plan. Add another on the same plan or a different one from Plan.
                   </p>
                 </div>
                 <div className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-blue-100">
@@ -824,6 +1069,15 @@ export default function ProfilePage() {
                 {sites.length > 0 ? (
                   sites.map((item) => {
                     const current = site?.id === item.id;
+                    const primarySiteId = sites.reduce((oldest, candidate) => {
+                      if (!oldest) return candidate;
+                      const oldestTime = new Date(oldest.createdAt || 0).getTime();
+                      const candidateTime = new Date(candidate.createdAt || 0).getTime();
+                      if (candidateTime < oldestTime) return candidate;
+                      if (candidateTime === oldestTime && candidate.id < oldest.id) return candidate;
+                      return oldest;
+                    }, null)?.id;
+                    const canDeleteSite = sites.length > 1 && item.id !== primarySiteId;
                     const status = formatSiteStatus(item.status);
                     const draftName = siteNames[item.id] ?? item.name ?? "";
                     const nameChanged = draftName.trim() !== (item.name || "").trim();
@@ -863,15 +1117,23 @@ export default function ProfilePage() {
                             />
                             <p className="mt-1.5 text-xs text-blue-100/70">/{item.slug}</p>
                           </div>
-                          <span
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                              status === "Published"
-                                ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
-                                : "border border-white/10 bg-white/5 text-blue-100"
-                            }`}
-                          >
-                            {status}
-                          </span>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                status === "Published"
+                                  ? "border border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+                                  : "border border-white/10 bg-white/5 text-blue-100"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                            <span
+                              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-200"
+                              title={`Plan: ${websitePlanName(item)}`}
+                            >
+                              {websitePlanName(item)}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -883,6 +1145,16 @@ export default function ProfilePage() {
                           >
                             {nameBusy ? "Saving…" : "Save name"}
                           </button>
+                          {canDeleteSite ? (
+                            <button
+                              type="button"
+                              disabled={siteDeleteBusy === item.id}
+                              onClick={() => deleteAdditionalSite(item)}
+                              className="rounded-full border border-rose-400/40 px-4 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-500/10 disabled:opacity-50"
+                            >
+                              {siteDeleteBusy === item.id ? "Deleting…" : "Delete website"}
+                            </button>
+                          ) : null}
                           {nameStatus ? (
                             <p
                               className={`text-xs ${
@@ -928,11 +1200,64 @@ export default function ProfilePage() {
                                 </a>
                               </div>
                             ) : null}
+
+                            {/* Custom plan: Choose subdomain */}
+                            {billing?.features?.technonaireAddress === "chosen" && (
+                              <div className="space-y-2 border-t border-white/10 pt-3">
+                                <h5 className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">
+                                  Custom address
+                                </h5>
+                                <SubdomainPicker
+                                  siteId={item.id}
+                                  currentSubdomain={item.subdomain}
+                                  canEdit={canGoLive}
+                                  onUpdate={(data) => {
+                                    if (data.site) {
+                                      applySitesFromResponse(data, item.id);
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {/* Domain plan: Custom domain setup */}
+                            {billing?.features?.domain && (
+                              <div className="space-y-2 border-t border-white/10 pt-3">
+                                <h5 className="text-xs font-semibold tracking-wide text-cyan-200 uppercase">
+                                  Use your own domain
+                                </h5>
+                                <CustomDomainSetup
+                                  siteId={item.id}
+                                  currentDomain={item.customDomain}
+                                  domainStatus={item.domainStatus}
+                                  cfValidationRecords={item.cfValidationRecords}
+                                  cfSslStatus={item.cfSslStatus}
+                                  canEdit={canGoLive}
+                                  onUpdate={(data) => {
+                                    if (data.site) {
+                                      applySitesFromResponse(data, item.id);
+                                    }
+                                  }}
+                                  onMessageUs={({ onceKey, body }) => {
+                                    setShowChat(true);
+                                    if (sentDomainHelp.current.has(onceKey)) {
+                                      setChatDraft(null);
+                                      return;
+                                    }
+                                    setChatDraft({
+                                      id: `${onceKey}:${Date.now()}`,
+                                      onceKey,
+                                      body,
+                                    });
+                                  }}
+                                />
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="mt-4 border-t border-white/10 pt-4">
                             <p className="text-xs text-blue-100/70">
-                              Subscribe to Starter to publish on a random.technonaire.site address.
+                              Subscribe to Starter to publish on a random Technonaire address.
                             </p>
                             <a
                               href="#plan"
@@ -1059,8 +1384,22 @@ export default function ProfilePage() {
             </section>
           ) : null}
 
+          {activeHash === "#templates" ? (
+            <section id="templates">
+              <AdminTemplatesGallery
+                openBase={user.role === "admin" ? "/admin/templates" : "/templates"}
+                actionLabel={user.role === "admin" ? "Open template" : "View template"}
+                description={
+                  user.role === "admin"
+                    ? "One-page previews by default. Assigned from business type at draft creation; clients can switch templates in the editor."
+                    : "Click a template to preview it. Apply adds that look to your website."
+                }
+              />
+            </section>
+          ) : null}
+
           {activeHash === "#security" ? (
-            <section id="security" className="space-y-6">
+            <section id="security" className="grid gap-6 lg:grid-cols-2 lg:items-start">
               <div className={panelClass}>
                 <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">
                   Security
@@ -1077,7 +1416,7 @@ export default function ProfilePage() {
                       Forgot password?
                     </Link>
                   </p>
-                  <form onSubmit={savePassword} className="mt-5 max-w-xl space-y-4">
+                  <form onSubmit={savePassword} className="mt-5 space-y-4">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-blue-100">
                         Current password
@@ -1147,7 +1486,7 @@ export default function ProfilePage() {
                 </p>
 
                 {user.totpEnabled && !totpSetup ? (
-                  <div className="mt-5 max-w-xl space-y-4">
+                  <div className="mt-5 space-y-4">
                     <p className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
                       Authenticator is on for this account.
                     </p>
@@ -1195,7 +1534,7 @@ export default function ProfilePage() {
                     </button>
                   </div>
                 ) : (
-                  <div className="mt-5 max-w-xl space-y-4">
+                  <div className="mt-5 space-y-4">
                     {!totpSetup ? (
                       <button
                         type="button"
@@ -1263,7 +1602,9 @@ export default function ProfilePage() {
               <p className="mt-1 text-sm text-blue-100/80">
                 {user.role === "admin"
                   ? "Admins are not billed. Manage client invoices from the sites list."
-                  : "Choose or change your package. Starter $9 · Custom $19 · Domain $29 · Pro + PWA $39."}
+                  : user.region === "pakistan"
+                    ? "Choose or change your package. Pakistan prices are shown in PKR."
+                    : "Choose or change your package. Starter $9 · Custom $19 · Domain $29 · Pro + PWA $39."}
               </p>
 
               {user.role === "owner" ? (
@@ -1274,9 +1615,22 @@ export default function ProfilePage() {
                     invoices={invoices}
                     busy={billingBusy}
                     message={billingMsg}
+                    region={user.region || "usa"}
+                    regionLocked={Boolean(user.regionLocked)}
+                    regionSaved={Boolean(user.regionConfirmed)}
+                    regionPrices={regionPrices}
+                    regions={regions}
+                    onRegionConfirmed={(nextRegion) =>
+                      setUser((current) =>
+                        current
+                          ? { ...current, region: nextRegion, regionConfirmed: true }
+                          : current
+                      )
+                    }
                     onAction={(action, id, extra = {}) =>
                       billingAction(action, id, { ...extra, returnTo: "plan" })
                     }
+                    sites={sites}
                     onCreateSiteRequest={() => setCreateSitePrompt(true)}
                     onContactUs={() => setShowChat(true)}
                   />
@@ -1316,7 +1670,15 @@ export default function ProfilePage() {
       </div>
 
       {user.role === "owner" ? (
-        <SupportChatSidebar open={showChat} onClose={() => setShowChat(false)} />
+        <SupportChatSidebar
+          open={showChat}
+          onClose={() => setShowChat(false)}
+          initialMessage={chatDraft}
+          onInitialMessageSent={(onceKey) => {
+            if (onceKey) sentDomainHelp.current.add(onceKey);
+            setChatDraft(null);
+          }}
+        />
       ) : null}
 
       <GoLiveDialog
@@ -1381,6 +1743,14 @@ export default function ProfilePage() {
         message={paymentSuccess?.message || "Payment successful"}
         continueLabel={paymentSuccess?.continueLabel || "Continue to Billing"}
         invoiceUrl={paymentSuccess?.invoiceUrl || null}
+        onStayOnPlans={
+          paymentSuccess?.nextHash === "#plan"
+            ? undefined
+            : () => {
+                setPaymentSuccess(null);
+                setActiveHash(replaceProfileLocation("#plan"));
+              }
+        }
         onViewInvoice={(url) => {
           setPaymentSuccess(null);
           window.location.assign(url);
@@ -1390,6 +1760,11 @@ export default function ProfilePage() {
           setPaymentSuccess(null);
           setActiveHash(replaceProfileLocation(next));
         }}
+      />
+
+      <SiteSwitcherGuide
+        open={showSiteSwitcherGuide}
+        onClose={() => setShowSiteSwitcherGuide(false)}
       />
     </div>
   );

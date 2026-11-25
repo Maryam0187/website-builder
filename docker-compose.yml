@@ -11,6 +11,32 @@ services:
       - "5432:5432"
     volumes:
       - tn-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d website_builder"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    image: node:20-bookworm-slim
+    container_name: tn-web
+    working_dir: /app
+    restart: unless-stopped
+    # Turbopack panics on this bind mount ("Next.js package not found") and the tab stops responding.
+    command: npm run dev -- --webpack --hostname 0.0.0.0 --port 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      # Inside Compose the database hostname is the db service, not localhost.
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/website_builder
+      DATABASE_SSL: "false"
+    volumes:
+      - .:/app
 
 volumes:
   tn-pg-data:
