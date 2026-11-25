@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { getNavItems, isOnePageLayout } from "@/lib/site-defaults";
+import { textStyle } from "./template-helpers";
 
 /**
  * Shared site header nav.
@@ -69,7 +70,7 @@ export default function SiteNav({
               ? "cursor-pointer outline outline-2 outline-transparent transition hover:outline-white/50 rounded-sm"
               : ""
           }`}
-          style={{ color: nameColor }}
+          style={textStyle(content, "brand.name", nameColor)}
           onClick={() => onEditBrand?.("brand.name", "Business name", "text", nameColor)}
         >
           {brand.name}
@@ -81,7 +82,7 @@ export default function SiteNav({
                 ? "cursor-pointer outline outline-2 outline-transparent transition hover:outline-white/50 rounded-sm"
                 : ""
             }`}
-            style={{ color: tagColor }}
+            style={textStyle(content, "brand.tagline", tagColor)}
             onClick={() => onEditBrand?.("brand.tagline", "Tagline", "text", tagColor)}
           >
             {brand.tagline}

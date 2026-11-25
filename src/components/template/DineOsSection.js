@@ -54,7 +54,7 @@ export default function DineOsSection({
           <Reveal>
             <p
               className={`text-xs font-semibold uppercase tracking-[0.28em] ${editable()}`}
-              style={{ color: gold }}
+              style={textStyle(content, `${base}.eyebrow`, gold)}
               onClick={() =>
                 handle?.(`${base}.eyebrow`, "DineOS eyebrow", "text", gold)
               }
@@ -102,7 +102,7 @@ export default function DineOsSection({
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`inline-flex rounded-full px-7 py-3.5 text-sm font-semibold transition hover:brightness-110 ${editable()}`}
-                style={{ background: gold, color: "#0f1410" }}
+                style={{ background: gold, ...textStyle(content, `${base}.cta`, "#0f1410") }}
                 onClick={(e) => {
                   if (editMode) {
                     e.preventDefault();
@@ -153,6 +153,11 @@ export default function DineOsSection({
                     <div>
                       <h2
                         className={`text-lg font-semibold ${editable()}`}
+                        style={textStyle(
+                          content,
+                          `${base}.points.${index}.title`,
+                          light ? "#1a221c" : "#f4f1ea",
+                        )}
                         onClick={() =>
                           handle?.(
                             `${base}.points.${index}.title`,
@@ -166,7 +171,11 @@ export default function DineOsSection({
                       </h2>
                       <p
                         className={`mt-1.5 text-sm leading-6 ${editable()}`}
-                        style={{ color: light ? "#5c6b64" : "#a8b0a4" }}
+                        style={textStyle(
+                          content,
+                          `${base}.points.${index}.description`,
+                          light ? "#5c6b64" : "#a8b0a4",
+                        )}
                         onClick={() =>
                           handle?.(
                             `${base}.points.${index}.description`,

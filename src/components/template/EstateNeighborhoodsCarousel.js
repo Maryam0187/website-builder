@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { textStyle } from "./template-helpers";
 
 function useVisibleCount() {
   const [count, setCount] = useState(3);
@@ -24,6 +25,7 @@ export default function EstateNeighborhoodsCarousel({
   items = [],
   base,
   theme,
+  content,
   editable,
   handle,
 }) {
@@ -122,6 +124,7 @@ export default function EstateNeighborhoodsCarousel({
                     <span className="mb-1 block h-px w-8" style={{ background: theme.primary }} />
                     <span
                       className={`block text-sm font-medium text-white ${editable()}`}
+                      style={textStyle(content, `${base}.items.${index}.caption`, "#ffffff")}
                       onClick={(e) => {
                         e.stopPropagation();
                         handle(

@@ -358,6 +358,7 @@ function HomePage({
           </h1>
           <p
             className={`tpl-fade-up tpl-fade-up-delay-2 mt-6 max-w-xl text-lg leading-8 text-white/90 md:text-xl ${editable()}`}
+            style={textStyle(content, "pages.home.hero.subheadline", "#ffffff")}
             onClick={() =>
               handle("pages.home.hero.subheadline", "Hero subheadline", "text", "#ffffff")
             }
@@ -368,7 +369,7 @@ function HomePage({
             <a
               href={contactHref}
               className={`tpl-cta-glow inline-flex rounded-full px-7 py-3.5 text-sm font-semibold text-white transition hover:brightness-110 ${editable()}`}
-              style={{ background: theme.primary }}
+              style={{ background: theme.primary, ...textStyle(content, "pages.home.hero.cta", "#ffffff") }}
               onClick={(e) => {
                 if (editMode) {
                   e.preventDefault();
@@ -517,6 +518,7 @@ function MenuPage({
                 <div className="flex flex-1 flex-col p-5">
                   <h2
                     className={`text-lg font-semibold text-white ${editable()}`}
+                    style={textStyle(content, `${base}.items.${index}.title`, "#ffffff")}
                     onClick={() =>
                       handle(`${base}.items.${index}.title`, "Item title", "text", "#ffffff")
                     }
@@ -525,6 +527,7 @@ function MenuPage({
                   </h2>
                   <p
                     className={`mt-2 flex-1 text-sm text-white/75 ${editable()}`}
+                    style={textStyle(content, `${base}.items.${index}.description`, "#ffffff")}
                     onClick={() =>
                       handle(
                         `${base}.items.${index}.description`,
@@ -589,6 +592,7 @@ function AboutPage({ page, pageId, theme, content, editable, handle, textStyle, 
             </h1>
             <p
               className={`mt-6 text-lg leading-8 text-white/90 md:text-xl ${editable()}`}
+              style={textStyle(content, `${base}.body`, "#ffffff")}
               onClick={() => handle(`${base}.body`, "About text", "textarea", "#ffffff")}
             >
               {page.body}
@@ -619,7 +623,8 @@ function AboutPage({ page, pageId, theme, content, editable, handle, textStyle, 
       </h1>
       <p
         className={`mt-5 max-w-3xl text-lg leading-8 text-white/80 ${editable()}`}
-        onClick={() => handle(`${base}.body`, "About text", "textarea", "#ffffff")}
+        style={textStyle(content, `${base}.body`, "#ffffff")}
+            onClick={() => handle(`${base}.body`, "About text", "textarea", "#ffffff")}
       >
         {page.body}
       </p>
@@ -669,6 +674,7 @@ function ContactPage({
               <a
                 href={`mailto:${email}`}
                 className={`font-semibold underline underline-offset-4 ${editable()}`}
+                style={textStyle(content, `${base}.email`, "#ffffff")}
                 onClick={(e) => {
                   if (editMode) {
                     e.preventDefault();
@@ -682,6 +688,7 @@ function ContactPage({
             {(page.address || editMode) && (
               <p
                 className={editable()}
+                style={textStyle(content, `${base}.address`, "#ffffff")}
                 onClick={() => handle(`${base}.address`, "Address", "text", "#ffffff")}
               >
                 {page.address || "Add your address (optional)"}
@@ -690,6 +697,7 @@ function ContactPage({
             {(page.hours || editMode) && (
               <p
                 className={editable()}
+                style={textStyle(content, `${base}.hours`, "#ffffff")}
                 onClick={() => handle(`${base}.hours`, "Hours", "text", "#ffffff")}
               >
                 {page.hours || "Add hours (optional)"}
@@ -841,6 +849,7 @@ function GalleryPage({ page, pageId, theme, content, editable, handle, textStyle
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent opacity-80 transition group-hover:opacity-95" />
                   <figcaption
                     className={`absolute bottom-0 left-0 right-0 p-4 text-left text-sm font-medium text-white ${editable()}`}
+                    style={textStyle(content, `${base}.items.${index}.caption`, "#ffffff")}
                     onClick={(e) => {
                       if (!editMode) return;
                       e.stopPropagation();
